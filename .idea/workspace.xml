@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="initial commit">
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/old_reference/wattoo/cire_z_score.geojson" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/old_reference/wattoo/cire_z_scores_cluster_all.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/old_reference/wattoo/kharif_wattoo_field_logs.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_cire_z_scores_norm.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_cire_z_scores_ts.csv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_field_cluster_generation_time_series.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/cire_z_score.geojson" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/raza/cire_z_score.geojson" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/cire_z_scores_cluster_all.csv" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/raza/cire_z_scores_cluster_all.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/kharif_raza_field_logs.csv" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/raza/kharif_raza_field_logs.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/raza_cire_z_scores_norm.csv" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/raza/raza_cire_z_scores_norm.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/raza_cire_z_scores_ts.csv" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/raza/raza_cire_z_scores_ts.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/raza_field_cluster_generation_time_series.py" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/raza/raza_field_cluster_generation_time_series.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/raza_planet_image_to_vi.py" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/raza/raza_planet_image_to_vi.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1
+}</component>
+  <component name="ProjectId" id="38zr0AlfIqIEd3Ohsg6pp1bCa9a" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Python.main.executor": "Run",
+    "Python.raza_planet_image_to_vi.executor": "Debug",
+    "Python.wattoo_planet_image_to_vi.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/Users/daoud/PycharmProjects/kisaan_ai/crop_health_scoring/old_reference"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/old_reference" />
+      <recent name="$PROJECT_DIR$" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/old_reference/raza" />
+      <recent name="$PROJECT_DIR$/old_reference/raza/" />
+      <recent name="$PROJECT_DIR$/old_reference/" />
+    </key>
+  </component>
+  <component name="RunManager" selected="Python.wattoo_planet_image_to_vi">
+    <configuration name="main" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+      <module name="crop_health_scoring" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="raza_planet_image_to_vi" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="crop_health_scoring" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/old_reference" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/old_reference/raza_planet_image_to_vi.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="wattoo_planet_image_to_vi" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="crop_health_scoring" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/old_reference/wattoo" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.wattoo_planet_image_to_vi" />
+        <item itemvalue="Python.raza_planet_image_to_vi" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-babbdf50b680-746f403e7f0c-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-241.15989.155" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="" />
+      <created>1769813022649</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1769813022649</updated>
+    </task>
+    <task id="LOCAL-00001" summary="initial commit">
+      <option name="closed" value="true" />
+      <created>1769814343986</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1769814343986</updated>
+    </task>
+    <task id="LOCAL-00002" summary="initial commit">
+      <option name="closed" value="true" />
+      <created>1769814597028</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1769814597028</updated>
+    </task>
+    <task id="LOCAL-00003" summary="initial commit">
+      <option name="closed" value="true" />
+      <created>1769814603654</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1769814603654</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
+    <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="initial commit" />
+    <option name="LAST_COMMIT_MESSAGE" value="initial commit" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/old_reference/raza/raza_planet_image_to_vi.py</url>
+          <line>365</line>
+          <option name="timeStamp" value="2" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py</url>
+          <line>543</line>
+          <option name="timeStamp" value="4" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py</url>
+          <line>375</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py</url>
+          <line>538</line>
+          <option name="timeStamp" value="6" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+</project>
