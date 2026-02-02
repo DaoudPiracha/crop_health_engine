@@ -1,5 +1,7 @@
-import os.path
+import os
 import glob
+from dataclasses import dataclass
+from typing import Optional, Tuple, List
 
 import pandas as pd
 import geopandas as gpd
@@ -12,7 +14,7 @@ from rasterio.mask import mask
 from rasterio.plot import show
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 
-from shapely.geometry import box, Polygon
+from shapely.geometry import box
 
 import matplotlib.colors as mcolors
 from matplotlib import cm
@@ -33,6 +35,38 @@ from engine.vegetation_indices import (
     calculate_ndvi_mask,
     create_evi,
 )
+
+
+# -------------------------
+# Config
+# -------------------------
+
+@dataclass(frozen=True)
+class PipelineConfig:
+    asset_dir: str
+    season: str
+    crop_id: str
+
+    file_dir: str  # glob root for images (already includes /*/PSScene/)
+    boundaries_file: str
+
+    cluster_file: str
+    z_score_ts_file: str
+    z_score_glob: str
+
+    target_crs: str
+
+    only_visual: bool
+    write_to_file: bool
+
+    color_clusters: bool
+    color_z_scores: bool
+    show_z_ts_plots: bool
+    reset_names: bool
+
+    unwanted_ids: List[str]
+
+    bbox_latlon: Tuple[float, float, float, float]  # (lat_min, lat_max, lon_min, lon_max)
 
 
 # -------------------------
@@ -218,12 +252,16 @@ def build_ndvi_log(
 
 
 # -------------------------
-# New orchestration helpers (extracted from __main__)
+# Orchestration helpers (explicit args)
 # -------------------------
 
-def load_z_ts_and_cumulative(z_score_ts_file: str, unwanted_ids: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_z_ts_and_cumulative(
+    z_score_ts_file: str,
+    unwanted_ids: list[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     if os.path.exists(z_score_ts_file):
         z_ts_df = pd.read_csv(z_score_ts_file)
+        # NOTE: will error if unwanted_ids not present; keeping your behavior.
         z_ts_df = z_ts_df.drop(columns=unwanted_ids)
     else:
         z_ts_df = pd.DataFrame()
@@ -235,8 +273,7 @@ def load_z_ts_and_cumulative(z_score_ts_file: str, unwanted_ids: list[str]) -> t
     return z_ts_df, cumulative_avg_df
 
 
-def load_boundaries(asset_dir: str, reset_names: bool) -> tuple[str, gpd.GeoDataFrame]:
-    boundaries_file = f"{asset_dir}/wattoo_farms.geojson"
+def load_boundaries(boundaries_file: str, reset_names: bool) -> tuple[str, gpd.GeoDataFrame]:
     print(boundaries_file)
     gdf_boundaries = gpd.read_file(boundaries_file)
 
@@ -248,7 +285,7 @@ def load_boundaries(asset_dir: str, reset_names: bool) -> tuple[str, gpd.GeoData
     return boundaries_file, gdf_boundaries
 
 
-def load_z_score_df(z_score_glob: str) -> pd.DataFrame:
+def load_z_score_df(z_score_glob: str) -> Optional[pd.DataFrame]:
     z_score_file_n = glob.glob(z_score_glob)
     z_score_df_n = [pd.read_csv(p) for p in z_score_file_n]
 
@@ -266,13 +303,11 @@ def plot_z_score_ts(
     cumulative_avg_df: pd.DataFrame,
     boundaries_file: str,
 ):
-
     for time in z_ts_df.index:
         z_ts_df = cumulative_avg_df
         time_data = z_ts_df.loc[time]
 
-        gdf_boundaries = gpd.read_file(boundaries_file)
-        gdf_boundaries = gdf_boundaries.copy()
+        gdf_boundaries = gpd.read_file(boundaries_file).copy()
         gdf_boundaries["z_score"] = gdf_boundaries["Name"].map(time_data)
 
         gdf_boundaries_with_z = gdf_boundaries
@@ -351,14 +386,13 @@ def apply_cluster_color(
 
 def apply_z_score_coloring_and_export(
     gdf_overlapping: gpd.GeoDataFrame,
-    z_score_df: pd.DataFrame,
+    z_score_df: Optional[pd.DataFrame],
     unwanted_ids_int: list[int],
     color_z_scores: bool,
 ) -> gpd.GeoDataFrame:
     if not color_z_scores:
         return gdf_overlapping
     if z_score_df is None:
-        # keep behavior: if missing, it would crash later anyway; here we just return unchanged
         return gdf_overlapping
 
     z_scores = z_score_df.rename(columns={"Unnamed: 0": "id", "0": "z_score"})
@@ -428,7 +462,6 @@ def preview_images(
         print(f"re-proj raster {img_file_raster.crs}")
         print(f"re-proj gdf {gdf_overlapping.crs}")
 
-        # Keep behavior: you were reading the full raster and also reading RGB separately
         _ = img_file_raster.read()
         raster_image, affine_transform, raster_crs, _meta = load_raster_with_affine(img_file)
 
@@ -444,72 +477,52 @@ def preview_images(
         )
 
 
-
-
-def write_ndvi_log(ndvi_log: pd.DataFrame, season: str, crop_id: str, write_to_file: bool):
+def write_ndvi_log(ndvi_log: pd.DataFrame, season: str, crop_id: str, write_to_file: bool) -> str:
     ndvi_log["date"] = pd.to_datetime(ndvi_log["date"], format="%Y%m%d")
     log_file_name = f"./{season}_{crop_id}_field_logs_new.csv"
     if write_to_file:
         ndvi_log.to_csv(log_file_name)
     return log_file_name
 
-def main():
-    asset_dir = "/Users/daoud/PycharmAssets/wattoo_farms"
-    season = "kharif"
-    crop_id = "wattoo"
-    file_dir = f"{asset_dir}/*/PSScene/"
 
-    color_clusters = False
-    color_z_scores = True
-    show_z_ts_plots = False
+# -------------------------
+# Main (cfg used here only)
+# -------------------------
 
-    unwanted_ids = ["301", "302", "304", "153", "176", "170", "175", "172"]
-    unwanted_ids_int = [int(x) for x in unwanted_ids]
+def main(cfg: PipelineConfig) -> None:
+    if cfg.only_visual and cfg.write_to_file:
+        raise ValueError("only_visual=True but write_to_file=True; refusing to write empty logs.")
 
-    cluster_file = "/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/sufi/cluster_cire.csv"
-    z_score_ts_file = "/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/wattoo_cire_z_scores_ts.csv"
-
-    z_score_glob = "/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/wattoo/wattoo_cire_z_scores_norm.csv"
-
-    target_crs = "epsg:3857"
-    only_visual = False
-    write_to_file = True
-
-    if only_visual and write_to_file:
-        raise ValueError
+    unwanted_ids_int = [int(x) for x in cfg.unwanted_ids]
 
     # 1) Load time series + cumulative (even if not used later, keep behavior)
-    z_ts_df, cumulative_avg_df = load_z_ts_and_cumulative(z_score_ts_file, unwanted_ids)
+    z_ts_df, cumulative_avg_df = load_z_ts_and_cumulative(cfg.z_score_ts_file, cfg.unwanted_ids)
 
     # 2) Load boundaries
-    boundaries_file, gdf_boundaries = load_boundaries(asset_dir, reset_names=False)
+    boundaries_file, gdf_boundaries = load_boundaries(cfg.boundaries_file, reset_names=cfg.reset_names)
 
     # 3) Load z-score df
-    z_score_df = load_z_score_df(z_score_glob)
+    z_score_df = load_z_score_df(cfg.z_score_glob)
 
     # 4) Optional: show z-ts plots
-    if show_z_ts_plots:
+    if cfg.show_z_ts_plots:
         plot_z_score_ts(z_ts_df, cumulative_avg_df, boundaries_file)
 
     # 5) Collect images
-    img_files = collect_image_files(file_dir)
+    img_files = collect_image_files(cfg.file_dir)
 
     # 6) Prepare gdf + bbox
-    # Note: keeping your bbox values exactly
-    gdf_overlapping, bounding_box = prepare_overlapping_gdf_and_bbox(
-        gdf_boundaries,
-        bbox_latlon=(30.6655, 30.676, 73.675377, 73.6815427),
-    )
+    gdf_overlapping, bounding_box = prepare_overlapping_gdf_and_bbox(gdf_boundaries, cfg.bbox_latlon)
 
     # 7) Apply cluster/default coloring
-    gdf_overlapping = apply_cluster_color(gdf_overlapping, color_clusters, cluster_file)
+    gdf_overlapping = apply_cluster_color(gdf_overlapping, cfg.color_clusters, cfg.cluster_file)
 
     # 8) Apply z-score coloring + export
     gdf_overlapping = apply_z_score_coloring_and_export(
         gdf_overlapping,
         z_score_df=z_score_df,
         unwanted_ids_int=unwanted_ids_int,
-        color_z_scores=color_z_scores,
+        color_z_scores=cfg.color_z_scores,
     )
 
     # 9) Preview images (your previous loop)
@@ -517,16 +530,46 @@ def main():
         img_files=img_files,
         gdf_overlapping=gdf_overlapping,
         bounding_box=bounding_box,
-        target_crs=target_crs,
+        target_crs=cfg.target_crs,
     )
 
     # 10) Compute NDVI log
-    ndvi_log = build_ndvi_log(img_files, gdf_overlapping, target_crs, only_visual)
+    ndvi_log = build_ndvi_log(img_files, gdf_overlapping, cfg.target_crs, cfg.only_visual)
 
     # 11) Write log
-    out_path = write_ndvi_log(ndvi_log, season, crop_id, write_to_file)
+    out_path = write_ndvi_log(ndvi_log, cfg.season, cfg.crop_id, cfg.write_to_file)
     print(f"Wrote log to: {out_path}")
 
 
 if __name__ == "__main__":
-    main()
+    asset_dir = "/Users/daoud/PycharmAssets/wattoo_farms"
+
+    cfg = PipelineConfig(
+        asset_dir=asset_dir,
+        season="kharif",
+        crop_id="wattoo",
+
+        file_dir=f"{asset_dir}/*/PSScene/",
+        boundaries_file=f"{asset_dir}/wattoo_farms.geojson",
+
+        cluster_file="/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/sufi/cluster_cire.csv",
+        z_score_ts_file="/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/wattoo_cire_z_scores_ts.csv",
+        z_score_glob="/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/wattoo/wattoo_cire_z_scores_norm.csv",
+
+        target_crs="epsg:3857",
+
+        only_visual=False,
+        write_to_file=True,
+
+        color_clusters=False,
+        color_z_scores=True,
+        show_z_ts_plots=False,
+        reset_names=False,
+
+        unwanted_ids=["301", "302", "304", "153", "176", "170", "175", "172"],
+
+        # (lat_min, lat_max, lon_min, lon_max)
+        bbox_latlon=(30.6655, 30.676, 73.675377, 73.6815427),
+    )
+
+    main(cfg)
