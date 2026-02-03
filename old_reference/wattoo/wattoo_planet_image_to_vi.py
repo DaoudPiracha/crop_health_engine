@@ -1,6 +1,7 @@
 import os
 import glob
-from typing import Optional
+from typing import Optional, Iterator
+from contextlib import contextmanager
 
 import pandas as pd
 import geopandas as gpd
@@ -14,9 +15,6 @@ from rasterio.plot import show
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 
 from shapely.geometry import box
-
-import matplotlib.colors as mcolors
-from matplotlib import cm
 
 from engine.constants import (
     RED,
@@ -55,7 +53,7 @@ def reproject_raster_to_match_gdf_crs(raster_path, target_crs):
 
     NOTE:
         This returns `src` directly when CRS matches (handle will be closed after with-block).
-        We'll fix lifetime/return-type consistency in a later pass.
+        We are keeping this function for now to minimize diffs, but it is no longer used.
     """
     with rasterio.open(raster_path) as src:
         if src.crs == target_crs:
@@ -90,6 +88,58 @@ def reproject_raster_to_match_gdf_crs(raster_path, target_crs):
                         resampling=Resampling.nearest,
                     )
             return memfile.open()
+
+
+@contextmanager
+def open_raster_in_crs(raster_path: str, target_crs: str) -> Iterator[rasterio.io.DatasetReader]:
+    """
+    Always yields an OPEN dataset in target_crs, and guarantees cleanup.
+    - If CRS matches: yields rasterio.open(...) directly.
+    - If CRS differs: reprojects into MemoryFile and yields that dataset.
+    """
+    src = rasterio.open(raster_path)
+    try:
+        if src.crs == target_crs:
+            yield src
+            return
+
+        transform, width, height = calculate_default_transform(
+            src.crs, target_crs, src.width, src.height, *src.bounds
+        )
+
+        profile = src.profile.copy()
+        profile.update(
+            {
+                "crs": target_crs,
+                "transform": transform,
+                "width": width,
+                "height": height,
+            }
+        )
+
+        memfile = MemoryFile()
+        try:
+            with memfile.open(**profile) as dst:
+                for i in range(1, src.count + 1):
+                    reproject(
+                        source=src.read(i),
+                        destination=rasterio.band(dst, i),
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        dst_transform=transform,
+                        dst_crs=target_crs,
+                        resampling=Resampling.nearest,
+                    )
+
+            ds = memfile.open()
+            try:
+                yield ds
+            finally:
+                ds.close()
+        finally:
+            memfile.close()
+    finally:
+        src.close()
 
 
 def crop_raster_with_polygon(raster, polygon):
@@ -155,87 +205,62 @@ def build_ndvi_log(
         img_date = get_date(img_file)
         print(">>>", img_date)
 
-        img_file_raster = rasterio.open(img_file)
-        if img_file_raster.crs != target_crs:
-            img_file_raster = reproject_raster_to_match_gdf_crs(img_file, target_crs)
-
         if only_visual:
             continue
 
-        for idx, row in gdf_proj.iterrows():
-            geom = row["geometry"]
-            print(row["Name"])
-            try:
-                cropped_image, _ = crop_raster_with_polygon(img_file_raster, geom)
+        with open_raster_in_crs(img_file, target_crs) as img_file_raster:
+            for idx, row in gdf_proj.iterrows():
+                geom = row["geometry"]
+                print(row["Name"])
+                try:
+                    cropped_image, _ = crop_raster_with_polygon(img_file_raster, geom)
 
-                red = cropped_image[RED - 1]
-                nir = cropped_image[NIR - 1]
-                blue = cropped_image[BLUE - 1]
-                red_edge = cropped_image[RED_EDGE - 1]
-                green_1 = cropped_image[GREEN_I - 1]
+                    red = cropped_image[RED - 1]
+                    nir = cropped_image[NIR - 1]
+                    blue = cropped_image[BLUE - 1]
+                    red_edge = cropped_image[RED_EDGE - 1]
+                    green_1 = cropped_image[GREEN_I - 1]
 
-                ndvi = calculate_ndvi_mask(red, nir)
-                ndre = calculate_ndvi_mask(red_edge, nir)
-                evi = create_evi(cropped_image)
-                cire = calculate_cire_mask(red_edge, nir)
-                mcari = calculate_mcari_mask(red_band=red, blue_band=blue, green_1_band=green_1)
-                msavi = calculate_msavi_mask(red_band=red, nir_band=nir)
+                    ndvi = calculate_ndvi_mask(red, nir)
+                    ndre = calculate_ndvi_mask(red_edge, nir)
+                    evi = create_evi(cropped_image)
+                    cire = calculate_cire_mask(red_edge, nir)
+                    mcari = calculate_mcari_mask(red_band=red, blue_band=blue, green_1_band=green_1)
+                    msavi = calculate_msavi_mask(red_band=red, nir_band=nir)
 
-                ndvi_mean, ndvi_std = calculate_band_stats(ndvi)
-                ndre_mean, ndre_std = calculate_band_stats(ndre)
-                evi_mean, evi_std = calculate_band_stats(evi)
-                cire_mean, cire_std = calculate_band_stats(cire)
-                mcari_mean, mcari_std = calculate_band_stats(mcari)
-                msavi_mean, msavi_std = calculate_band_stats(msavi)
+                    ndvi_mean, ndvi_std = calculate_band_stats(ndvi)
+                    ndre_mean, ndre_std = calculate_band_stats(ndre)
+                    evi_mean, evi_std = calculate_band_stats(evi)
+                    cire_mean, cire_std = calculate_band_stats(cire)
+                    mcari_mean, mcari_std = calculate_band_stats(mcari)
+                    msavi_mean, msavi_std = calculate_band_stats(msavi)
 
-                rows.append(
-                    {
-                        "date": img_date,
-                        "name": row["Name"],
-                        "ndvi_mean": ndvi_mean,
-                        "ndvi_std": ndvi_std,
-                        "ndre_mean": ndre_mean,
-                        "ndre_std": ndre_std,
-                        "evi_mean": evi_mean,
-                        "evi_std": evi_std,
-                        "cire_mean": cire_mean,
-                        "cire_std": cire_std,
-                        "mcari_mean": mcari_mean,
-                        "mcari_std": mcari_std,
-                        "msavi_mean": msavi_mean,
-                        "msavi_std": msavi_std,
-                    }
-                )
+                    rows.append(
+                        {
+                            "date": img_date,
+                            "name": row["Name"],
+                            "ndvi_mean": ndvi_mean,
+                            "ndvi_std": ndvi_std,
+                            "ndre_mean": ndre_mean,
+                            "ndre_std": ndre_std,
+                            "evi_mean": evi_mean,
+                            "evi_std": evi_std,
+                            "cire_mean": cire_mean,
+                            "cire_std": cire_std,
+                            "mcari_mean": mcari_mean,
+                            "mcari_std": mcari_std,
+                            "msavi_mean": msavi_mean,
+                            "msavi_std": msavi_std,
+                        }
+                    )
 
-                print(
-                    f"Polygon {idx} (Date: {img_date}): NDVI Mean = {ndvi_mean:.4f}, NDVI Std Dev = {ndvi_std:.4f}"
-                )
-            except Exception as e:
-                print(f"Error in {img_date}/{idx}: {e}")
+                    print(
+                        f"Polygon {idx} (Date: {img_date}): NDVI Mean = {ndvi_mean:.4f}, NDVI Std Dev = {ndvi_std:.4f}"
+                    )
+                except Exception as e:
+                    print(f"Error in {img_date}/{idx}: {e}")
 
     return pd.DataFrame.from_records(rows, columns=LOG_COLUMNS)
-
-
-# -------------------------
-# Orchestration helpers (explicit args)
-# -------------------------
-
-def load_z_ts_and_cumulative(
-    z_score_ts_file: str,
-    unwanted_ids: list[str],
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    if os.path.exists(z_score_ts_file):
-        z_ts_df = pd.read_csv(z_score_ts_file)
-        # NOTE: will error if unwanted_ids not present; keeping your behavior.
-        z_ts_df = z_ts_df.drop(columns=unwanted_ids)
-    else:
-        z_ts_df = pd.DataFrame()
-
-    cumulative_avg_df = pd.DataFrame(index=z_ts_df.index)
-    for column in z_ts_df.columns[1:]:
-        cumulative_avg_df[column] = z_ts_df[column].cumsum() / z_ts_df[column].notnull().cumsum()
-
-    return z_ts_df, cumulative_avg_df
 
 
 def load_boundaries(boundaries_file: str, reset_names: bool) -> tuple[str, gpd.GeoDataFrame]:
@@ -248,57 +273,6 @@ def load_boundaries(boundaries_file: str, reset_names: bool) -> tuple[str, gpd.G
 
     gdf_boundaries.boundary.plot(edgecolor="red")
     return boundaries_file, gdf_boundaries
-
-
-def load_z_score_df(z_score_glob: str) -> Optional[pd.DataFrame]:
-    z_score_file_n = glob.glob(z_score_glob)
-    z_score_df_n = [pd.read_csv(p) for p in z_score_file_n]
-
-    if not z_score_df_n:
-        return None
-
-    z_score_df = pd.concat(z_score_df_n)
-    z_score_df = z_score_df[:94]
-    z_score_df["Unnamed: 0"] = z_score_df["Unnamed: 0"].astype(np.int64)
-    return z_score_df
-
-
-def plot_z_score_ts(
-    z_ts_df: pd.DataFrame,
-    cumulative_avg_df: pd.DataFrame,
-    boundaries_file: str,
-):
-    for time in z_ts_df.index:
-        z_ts_df = cumulative_avg_df
-        time_data = z_ts_df.loc[time]
-
-        gdf_boundaries = gpd.read_file(boundaries_file).copy()
-        gdf_boundaries["z_score"] = gdf_boundaries["Name"].map(time_data)
-
-        gdf_boundaries_with_z = gdf_boundaries
-
-        norm = mcolors.Normalize(
-            vmin=gdf_boundaries_with_z["z_score"].min(),
-            vmax=gdf_boundaries_with_z["z_score"].max(),
-        )
-        cmap = cm.plasma
-        gdf_boundaries_with_z["color"] = gdf_boundaries_with_z["z_score"].apply(
-            lambda z: mcolors.to_hex(cmap(norm(z)))
-        )
-
-        gdf_boundaries_with_z["color"] = gdf_boundaries_with_z["color"].apply(
-            lambda color: "#e3e3e3" if color == "#000000" else color
-        )
-
-        fig, ax = plt.subplots(figsize=(10, 10))
-        plt.title(f"Health Score / Days since emergence: {time}")
-        gdf_boundaries_with_z.plot(
-            ax=ax,
-            facecolor=gdf_boundaries_with_z["color"],
-            edgecolor=gdf_boundaries_with_z["color"],
-            linewidth=0.5,
-        )
-        plt.show()
 
 
 def collect_image_files(file_dir: str) -> list[str]:
@@ -322,89 +296,6 @@ def prepare_overlapping_gdf_and_bbox(
     return gdf_overlapping, bounding_box
 
 
-def apply_cluster_color(
-    gdf_overlapping: gpd.GeoDataFrame,
-    color_clusters: bool,
-    cluster_file: str,
-) -> gpd.GeoDataFrame:
-    if color_clusters:
-        clusters = pd.read_csv(cluster_file)
-        gdf_overlapping = pd.merge(gdf_overlapping, clusters, on="id")
-        color_mapping = {
-            0: "black",
-            1: "blue",
-            2: "black",
-            3: "white",
-            4: "black",
-            5: "cyan",
-            6: "black",
-            7: "black",
-            8: "red",
-            9: "black",
-        }
-        gdf_overlapping["color"] = gdf_overlapping["cluster"].map(color_mapping)
-    else:
-        gdf_overlapping["color"] = "#808080"
-
-    return gdf_overlapping
-
-
-def apply_z_score_coloring_and_export(
-    gdf_overlapping: gpd.GeoDataFrame,
-    z_score_df: Optional[pd.DataFrame],
-    unwanted_ids_int: list[int],
-    color_z_scores: bool,
-) -> gpd.GeoDataFrame:
-    if not color_z_scores:
-        return gdf_overlapping
-    if z_score_df is None:
-        return gdf_overlapping
-
-    z_scores = z_score_df.rename(columns={"Unnamed: 0": "id", "0": "z_score"})
-    z_scores = z_scores[~z_scores["id"].isin(unwanted_ids_int)]
-
-    max_z_score = 3
-    min_z_score = -1.5
-    z_scores = z_scores[z_scores["z_score"] < max_z_score]
-    z_scores = z_scores[z_scores["z_score"] > min_z_score]
-    z_scores["z_score"] = z_scores["z_score"].clip(lower=-2, upper=2)
-
-    gdf_overlapping["Name"] = gdf_overlapping["Name"].astype(np.int64)
-    gdf_overlapping = pd.merge(gdf_overlapping, z_scores, left_on="Name", right_on="id", how="left")
-
-    norm = mcolors.Normalize(vmin=gdf_overlapping["z_score"].min(), vmax=gdf_overlapping["z_score"].max())
-    cmap = cm.RdYlGn
-    gdf_overlapping["color"] = gdf_overlapping["z_score"].apply(lambda z: mcolors.to_hex(cmap(norm(z))))
-    gdf_overlapping["color"] = gdf_overlapping["color"].apply(
-        lambda color: "#e3e3e3" if color == "#000000" else color
-    )
-
-    fig, ax = plt.subplots(figsize=(10, 10))
-    gdf_overlapping.plot(
-        ax=ax,
-        facecolor=gdf_overlapping["color"],
-        edgecolor=gdf_overlapping["color"],
-        linewidth=0.5,
-    )
-
-    gdf_overlapping["predicted_yield"] = (18.81 * gdf_overlapping["z_score"] + 46.918)
-
-    norm = mcolors.Normalize(
-        vmin=gdf_overlapping["predicted_yield"].min(),
-        vmax=gdf_overlapping["predicted_yield"].max(),
-    )
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array(gdf_overlapping["predicted_yield"])
-    cbar = plt.colorbar(sm, ax=ax)
-    cbar.set_label("Predicted Yield (man/ac)")
-
-    plt.title("Corn Fields colored by Health Score")
-    plt.show()
-    gdf_overlapping.to_file("cire_z_score.geojson", driver="GeoJSON")
-
-    return gdf_overlapping
-
-
 def preview_images(
     img_files: list[str],
     gdf_overlapping: gpd.GeoDataFrame,
@@ -417,29 +308,23 @@ def preview_images(
         img_date = get_date(img_file)
         print(">>>", img_date)
 
-        img_file_raster = rasterio.open(img_file)
-        print(f"preproj raster {img_file_raster.crs}")
-        print(f"preproj gdf {gdf_overlapping.crs}")
+        with open_raster_in_crs(img_file, target_crs) as img_file_raster:
+            print(f"re-proj raster {img_file_raster.crs}")
+            print(f"re-proj gdf {gdf_overlapping.crs}")
 
-        if img_file_raster.crs != target_crs:
-            img_file_raster = reproject_raster_to_match_gdf_crs(img_file, target_crs)
+            _ = img_file_raster.read()
+            raster_image, affine_transform, raster_crs, _meta = load_raster_with_affine(img_file)
 
-        print(f"re-proj raster {img_file_raster.crs}")
-        print(f"re-proj gdf {gdf_overlapping.crs}")
-
-        _ = img_file_raster.read()
-        raster_image, affine_transform, raster_crs, _meta = load_raster_with_affine(img_file)
-
-        id_subset = 3826
-        visualize_raster_and_gdf(
-            raster_image,
-            affine_transform,
-            gdf_overlapping,
-            raster_crs,
-            img_date,
-            id_subset,
-            bounding_box=bounding_box,
-        )
+            id_subset = 3826
+            visualize_raster_and_gdf(
+                raster_image,
+                affine_transform,
+                gdf_overlapping,
+                raster_crs,
+                img_date,
+                id_subset,
+                bounding_box=bounding_box,
+            )
 
 
 def write_ndvi_log(ndvi_log: pd.DataFrame, season: str, crop_id: str, write_to_file: bool) -> str:
@@ -450,36 +335,19 @@ def write_ndvi_log(ndvi_log: pd.DataFrame, season: str, crop_id: str, write_to_f
     return log_file_name
 
 
-
 def main(cfg: PipelineConfig) -> None:
     if cfg.only_visual and cfg.write_to_file:
         raise ValueError("only_visual=True but write_to_file=True; refusing to write empty logs.")
 
-    unwanted_ids_int = [int(x) for x in cfg.unwanted_ids]
-
-    # # 1) Load time series + cumulative (even if not used later, keep behavior)
-    # z_ts_df, cumulative_avg_df = load_z_ts_and_cumulative(cfg.z_score_ts_file, cfg.unwanted_ids)
-
-    # 1) Load boundary files
     boundaries_file, gdf_boundaries = load_boundaries(cfg.boundaries_file, reset_names=cfg.reset_names)
-
-    # 2) Load images
     img_files = collect_image_files(cfg.file_dir)
-
-    # 3) Merge images and boundaries geospatially
     gdf_overlapping, bounding_box = prepare_overlapping_gdf_and_bbox(gdf_boundaries, cfg.bbox_latlon)
 
-    # 4) Compute NDVI log
     ndvi_log = build_ndvi_log(img_files, gdf_overlapping, cfg.target_crs, cfg.only_visual)
-
-    # 5) Write log
     out_path = write_ndvi_log(ndvi_log, cfg.season, cfg.crop_id, cfg.write_to_file)
     print(f"Wrote log to: {out_path}")
 
-    # 6) Visualize images with boundaries
-
-    show_images_at_each_ts = False
-
+    show_images_at_each_ts = True
     if show_images_at_each_ts:
         preview_images(
             img_files=img_files,
@@ -487,27 +355,6 @@ def main(cfg: PipelineConfig) -> None:
             bounding_box=bounding_box,
             target_crs=cfg.target_crs,
         )
-
-    # # 7) Apply cluster/default coloring
-    # gdf_overlapping = apply_cluster_color(gdf_overlapping, cfg.color_clusters, cfg.cluster_file)
-    #
-    # # 3) Load z-score df --> only for viz
-    # z_score_df = load_z_score_df(cfg.z_score_glob)
-    #
-    # # 4) Optional: show z-ts plots
-    # if cfg.show_z_ts_plots:
-    #     plot_z_score_ts(z_ts_df, cumulative_avg_df, boundaries_file)
-    #
-    #
-    # # 8) Apply z-score coloring + export
-    # gdf_overlapping = apply_z_score_coloring_and_export(
-    #     gdf_overlapping,
-    #     z_score_df=z_score_df,
-    #     unwanted_ids_int=unwanted_ids_int,
-    #     color_z_scores=cfg.color_z_scores,
-    # )
-    #
-
 
 
 if __name__ == "__main__":
@@ -537,7 +384,6 @@ if __name__ == "__main__":
 
         unwanted_ids=["301", "302", "304", "153", "176", "170", "175", "172"],
 
-        # (lat_min, lat_max, lon_min, lon_max)
         bbox_latlon=(30.6655, 30.676, 73.675377, 73.6815427),
     )
 
