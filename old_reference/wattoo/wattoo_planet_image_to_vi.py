@@ -1,7 +1,6 @@
 import os
 import glob
-from dataclasses import dataclass
-from typing import Optional, Tuple, List
+from typing import Optional
 
 import pandas as pd
 import geopandas as gpd
@@ -36,42 +35,8 @@ from engine.vegetation_indices import (
     create_evi,
 )
 
+from engine.pipeline_config import PipelineConfig
 
-# -------------------------
-# Config
-# -------------------------
-
-@dataclass(frozen=True)
-class PipelineConfig:
-    asset_dir: str
-    season: str
-    crop_id: str
-
-    file_dir: str  # glob root for images (already includes /*/PSScene/)
-    boundaries_file: str
-
-    cluster_file: str
-    z_score_ts_file: str
-    z_score_glob: str
-
-    target_crs: str
-
-    only_visual: bool
-    write_to_file: bool
-
-    color_clusters: bool
-    color_z_scores: bool
-    show_z_ts_plots: bool
-    reset_names: bool
-
-    unwanted_ids: List[str]
-
-    bbox_latlon: Tuple[float, float, float, float]  # (lat_min, lat_max, lon_min, lon_max)
-
-
-# -------------------------
-# Existing helpers (unchanged)
-# -------------------------
 
 def load_raster_with_affine(image_path):
     """Load raster data and affine transform."""
@@ -479,15 +444,12 @@ def preview_images(
 
 def write_ndvi_log(ndvi_log: pd.DataFrame, season: str, crop_id: str, write_to_file: bool) -> str:
     ndvi_log["date"] = pd.to_datetime(ndvi_log["date"], format="%Y%m%d")
-    log_file_name = f"./{season}_{crop_id}_field_logs_new.csv"
+    log_file_name = f"./{season}_{crop_id}_field_logs_new_1.csv"
     if write_to_file:
         ndvi_log.to_csv(log_file_name)
     return log_file_name
 
 
-# -------------------------
-# Main (cfg used here only)
-# -------------------------
 
 def main(cfg: PipelineConfig) -> None:
     if cfg.only_visual and cfg.write_to_file:
@@ -495,50 +457,57 @@ def main(cfg: PipelineConfig) -> None:
 
     unwanted_ids_int = [int(x) for x in cfg.unwanted_ids]
 
-    # 1) Load time series + cumulative (even if not used later, keep behavior)
-    z_ts_df, cumulative_avg_df = load_z_ts_and_cumulative(cfg.z_score_ts_file, cfg.unwanted_ids)
+    # # 1) Load time series + cumulative (even if not used later, keep behavior)
+    # z_ts_df, cumulative_avg_df = load_z_ts_and_cumulative(cfg.z_score_ts_file, cfg.unwanted_ids)
 
-    # 2) Load boundaries
+    # 1) Load boundary files
     boundaries_file, gdf_boundaries = load_boundaries(cfg.boundaries_file, reset_names=cfg.reset_names)
 
-    # 3) Load z-score df
-    z_score_df = load_z_score_df(cfg.z_score_glob)
-
-    # 4) Optional: show z-ts plots
-    if cfg.show_z_ts_plots:
-        plot_z_score_ts(z_ts_df, cumulative_avg_df, boundaries_file)
-
-    # 5) Collect images
+    # 2) Load images
     img_files = collect_image_files(cfg.file_dir)
 
-    # 6) Prepare gdf + bbox
+    # 3) Merge images and boundaries geospatially
     gdf_overlapping, bounding_box = prepare_overlapping_gdf_and_bbox(gdf_boundaries, cfg.bbox_latlon)
 
-    # 7) Apply cluster/default coloring
-    gdf_overlapping = apply_cluster_color(gdf_overlapping, cfg.color_clusters, cfg.cluster_file)
-
-    # 8) Apply z-score coloring + export
-    gdf_overlapping = apply_z_score_coloring_and_export(
-        gdf_overlapping,
-        z_score_df=z_score_df,
-        unwanted_ids_int=unwanted_ids_int,
-        color_z_scores=cfg.color_z_scores,
-    )
-
-    # 9) Preview images (your previous loop)
-    preview_images(
-        img_files=img_files,
-        gdf_overlapping=gdf_overlapping,
-        bounding_box=bounding_box,
-        target_crs=cfg.target_crs,
-    )
-
-    # 10) Compute NDVI log
+    # 4) Compute NDVI log
     ndvi_log = build_ndvi_log(img_files, gdf_overlapping, cfg.target_crs, cfg.only_visual)
 
-    # 11) Write log
+    # 5) Write log
     out_path = write_ndvi_log(ndvi_log, cfg.season, cfg.crop_id, cfg.write_to_file)
     print(f"Wrote log to: {out_path}")
+
+    # 6) Visualize images with boundaries
+
+    show_images_at_each_ts = False
+
+    if show_images_at_each_ts:
+        preview_images(
+            img_files=img_files,
+            gdf_overlapping=gdf_overlapping,
+            bounding_box=bounding_box,
+            target_crs=cfg.target_crs,
+        )
+
+    # # 7) Apply cluster/default coloring
+    # gdf_overlapping = apply_cluster_color(gdf_overlapping, cfg.color_clusters, cfg.cluster_file)
+    #
+    # # 3) Load z-score df --> only for viz
+    # z_score_df = load_z_score_df(cfg.z_score_glob)
+    #
+    # # 4) Optional: show z-ts plots
+    # if cfg.show_z_ts_plots:
+    #     plot_z_score_ts(z_ts_df, cumulative_avg_df, boundaries_file)
+    #
+    #
+    # # 8) Apply z-score coloring + export
+    # gdf_overlapping = apply_z_score_coloring_and_export(
+    #     gdf_overlapping,
+    #     z_score_df=z_score_df,
+    #     unwanted_ids_int=unwanted_ids_int,
+    #     color_z_scores=cfg.color_z_scores,
+    # )
+    #
+
 
 
 if __name__ == "__main__":
