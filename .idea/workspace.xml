@@ -4,12 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="added context manager for rasters">
-      <change afterPath="$PROJECT_DIR$/engine/io/assets.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/engine/io/raster.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/engine/viz/preview.py" afterDir="false" />
+    <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="refactored out io and viz to sep modules">
+      <change afterPath="$PROJECT_DIR$/engine/compute/stats.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/old_reference/wattoo/kharif_wattoo_field_logs_new_1.csv" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -188,14 +185,23 @@
       <option name="project" value="LOCAL" />
       <updated>1770162328645</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="refactored out io and viz to sep modules">
+      <option name="closed" value="true" />
+      <created>1770166419874</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1770166419874</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="initial commit" />
     <MESSAGE value="moved config to sep dataclass, module" />
     <MESSAGE value="added context manager for rasters" />
-    <option name="LAST_COMMIT_MESSAGE" value="added context manager for rasters" />
+    <MESSAGE value="refactored out io and viz to sep modules" />
+    <option name="LAST_COMMIT_MESSAGE" value="refactored out io and viz to sep modules" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -204,6 +210,11 @@
           <url>file://$PROJECT_DIR$/old_reference/raza/raza_planet_image_to_vi.py</url>
           <line>365</line>
           <option name="timeStamp" value="2" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/engine/compute/indices.py</url>
+          <line>12</line>
+          <option name="timeStamp" value="18" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
