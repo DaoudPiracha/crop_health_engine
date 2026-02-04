@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Iterator, Tuple
 from contextlib import contextmanager
 
 import rasterio
+
+logger = logging.getLogger(__name__)
 from rasterio.io import MemoryFile
 from rasterio.mask import mask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
@@ -43,7 +46,7 @@ def reproject_raster_to_match_gdf_crs(raster_path: str, target_crs: str):
     """
     with rasterio.open(raster_path) as src:
         if src.crs == target_crs:
-            print("The raster already matches the target CRS.")
+            logger.info("Raster already matches target CRS")
             return src
 
         transform, width, height = calculate_default_transform(

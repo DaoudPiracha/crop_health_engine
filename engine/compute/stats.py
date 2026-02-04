@@ -1,10 +1,12 @@
-
+import logging
 import geopandas as gpd
 import pandas as pd
 
 from engine.compute.indices import compute_indices_stats
 from engine.io.assets import get_date
 from engine.io.raster import open_raster_in_crs, crop_raster_with_polygon
+
+logger = logging.getLogger(__name__)
 
 
 # todo: move the crop function out of this
@@ -37,7 +39,7 @@ def build_field_veg_index_stats(
 
     for img_file in img_file_paths:
         img_date = get_date(img_file)
-        print(">>>", img_date)
+        logger.info(f"Processing image date: {img_date}")
 
         with open_raster_in_crs(img_file, target_crs) as ds:
             for idx, row in gdf_proj.iterrows():
@@ -56,7 +58,7 @@ def build_field_veg_index_stats(
                     })
 
                 except Exception as e:
-                    print(f"Error in {img_date}/{idx}: {e}")
+                    logger.error(f"Error processing field {name} on {img_date}: {e}", exc_info=True)
 
     return pd.DataFrame.from_records(rows, columns=log_columns)
 

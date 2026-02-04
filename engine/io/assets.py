@@ -1,7 +1,10 @@
 # engine/io/assets.py
 
 import glob
+import logging
 import geopandas as gpd
+
+logger = logging.getLogger(__name__)
 
 
 def get_date(filename: str) -> str:
@@ -20,7 +23,7 @@ def collect_image_files(file_dir: str) -> list[str]:
 
 
 def load_boundaries(boundaries_file: str, reset_names: bool) -> tuple[str, gpd.GeoDataFrame]:
-    print(boundaries_file)
+    logger.debug(f"Loading boundaries from: {boundaries_file}")
     gdf_boundaries = gpd.read_file(boundaries_file)
 
     if reset_names:

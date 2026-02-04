@@ -1,7 +1,14 @@
+import logging
 
 from engine.pipeline_config import PipelineConfig
 from engine.pipeline.run import run_pipeline
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 if __name__ == "__main__":
     asset_dir = "/Users/daoud/PycharmAssets/wattoo_farms"
