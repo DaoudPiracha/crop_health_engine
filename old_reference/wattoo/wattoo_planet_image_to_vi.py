@@ -6,7 +6,6 @@ from contextlib import contextmanager
 import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
-import numpy as np
 
 import rasterio
 from rasterio.io import MemoryFile
@@ -20,20 +19,13 @@ from engine.constants import (
     RED,
     GREEN,
     BLUE,
-    NIR,
-    RED_EDGE,
-    GREEN_I,
-)
-
-from engine.vegetation_indices import (
-    calculate_cire_mask,
-    calculate_msavi_mask,
-    calculate_mcari_mask,
-    calculate_ndvi_mask,
-    create_evi,
 )
 
 from engine.pipeline_config import PipelineConfig
+from engine.compute.indices import (
+    LOG_COLUMNS,
+    compute_indices_stats,
+)
 
 
 def load_raster_with_affine(image_path):
@@ -167,28 +159,11 @@ def visualize_raster_and_gdf(
     plt.show()
 
 
-def calculate_band_stats(band_values):
-    mean = np.nanmean(band_values)
-    std = np.nanstd(band_values)
-    return mean, std
-
-
 def get_date(filename):
     file_name = filename.split("/")[-1]
     if "SKY" in file_name:
         return file_name.split("_")[3][:8]
     return file_name[:8]
-
-
-LOG_COLUMNS = [
-    "date", "name",
-    "ndvi_mean", "ndvi_std",
-    "ndre_mean", "ndre_std",
-    "evi_mean", "evi_std",
-    "cire_mean", "cire_std",
-    "mcari_mean", "mcari_std",
-    "msavi_mean", "msavi_std",
-]
 
 
 def build_ndvi_log(
@@ -198,7 +173,6 @@ def build_ndvi_log(
     only_visual: bool,
 ) -> pd.DataFrame:
     rows: list[dict] = []
-
     gdf_proj = gdf_overlapping.to_crs(target_crs)
 
     for img_file in img_file_paths:
@@ -215,47 +189,18 @@ def build_ndvi_log(
                 try:
                     cropped_image, _ = crop_raster_with_polygon(img_file_raster, geom)
 
-                    red = cropped_image[RED - 1]
-                    nir = cropped_image[NIR - 1]
-                    blue = cropped_image[BLUE - 1]
-                    red_edge = cropped_image[RED_EDGE - 1]
-                    green_1 = cropped_image[GREEN_I - 1]
-
-                    ndvi = calculate_ndvi_mask(red, nir)
-                    ndre = calculate_ndvi_mask(red_edge, nir)
-                    evi = create_evi(cropped_image)
-                    cire = calculate_cire_mask(red_edge, nir)
-                    mcari = calculate_mcari_mask(red_band=red, blue_band=blue, green_1_band=green_1)
-                    msavi = calculate_msavi_mask(red_band=red, nir_band=nir)
-
-                    ndvi_mean, ndvi_std = calculate_band_stats(ndvi)
-                    ndre_mean, ndre_std = calculate_band_stats(ndre)
-                    evi_mean, evi_std = calculate_band_stats(evi)
-                    cire_mean, cire_std = calculate_band_stats(cire)
-                    mcari_mean, mcari_std = calculate_band_stats(mcari)
-                    msavi_mean, msavi_std = calculate_band_stats(msavi)
+                    stats = compute_indices_stats(cropped_image)
 
                     rows.append(
                         {
                             "date": img_date,
                             "name": row["Name"],
-                            "ndvi_mean": ndvi_mean,
-                            "ndvi_std": ndvi_std,
-                            "ndre_mean": ndre_mean,
-                            "ndre_std": ndre_std,
-                            "evi_mean": evi_mean,
-                            "evi_std": evi_std,
-                            "cire_mean": cire_mean,
-                            "cire_std": cire_std,
-                            "mcari_mean": mcari_mean,
-                            "mcari_std": mcari_std,
-                            "msavi_mean": msavi_mean,
-                            "msavi_std": msavi_std,
+                            **stats,
                         }
                     )
 
                     print(
-                        f"Polygon {idx} (Date: {img_date}): NDVI Mean = {ndvi_mean:.4f}, NDVI Std Dev = {ndvi_std:.4f}"
+                        f"Polygon {idx} (Date: {img_date}): NDVI Mean = {stats['ndvi_mean']:.4f}, NDVI Std Dev = {stats['ndvi_std']:.4f}"
                     )
                 except Exception as e:
                     print(f"Error in {img_date}/{idx}: {e}")
@@ -347,14 +292,14 @@ def main(cfg: PipelineConfig) -> None:
     out_path = write_ndvi_log(ndvi_log, cfg.season, cfg.crop_id, cfg.write_to_file)
     print(f"Wrote log to: {out_path}")
 
-    show_images_at_each_ts = True
-    if show_images_at_each_ts:
-        preview_images(
-            img_files=img_files,
-            gdf_overlapping=gdf_overlapping,
-            bounding_box=bounding_box,
-            target_crs=cfg.target_crs,
-        )
+    # show_images_at_each_ts = True
+    # if show_images_at_each_ts:
+    #     preview_images(
+    #         img_files=img_files,
+    #         gdf_overlapping=gdf_overlapping,
+    #         bounding_box=bounding_box,
+    #         target_crs=cfg.target_crs,
+    #     )
 
 
 if __name__ == "__main__":

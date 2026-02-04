@@ -4,7 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="moved config to sep dataclass, module">
+    <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="added context manager for rasters">
+      <change afterPath="$PROJECT_DIR$/engine/compute/indices.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" afterDir="false" />
     </list>
@@ -176,13 +177,22 @@
       <option name="project" value="LOCAL" />
       <updated>1770159692569</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="added context manager for rasters">
+      <option name="closed" value="true" />
+      <created>1770162328645</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1770162328645</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="initial commit" />
     <MESSAGE value="moved config to sep dataclass, module" />
-    <option name="LAST_COMMIT_MESSAGE" value="moved config to sep dataclass, module" />
+    <MESSAGE value="added context manager for rasters" />
+    <option name="LAST_COMMIT_MESSAGE" value="added context manager for rasters" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
