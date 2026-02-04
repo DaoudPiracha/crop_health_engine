@@ -24,6 +24,7 @@ class PipelineConfig:
     color_z_scores: bool
     show_z_ts_plots: bool
     reset_names: bool
+    show_images_at_each_ts: bool
 
     unwanted_ids: List[str]
 

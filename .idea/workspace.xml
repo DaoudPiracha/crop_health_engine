@@ -4,9 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="refactored out io and viz to sep modules">
-      <change afterPath="$PROJECT_DIR$/engine/compute/stats.py" afterDir="false" />
+    <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="refactored out log_columns to engine.compute.stats as kwargs">
+      <change afterPath="$PROJECT_DIR$/engine/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/engine/pipeline/run.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/engine/pipeline_config.py" beforeDir="false" afterPath="$PROJECT_DIR$/engine/pipeline_config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -193,7 +195,23 @@
       <option name="project" value="LOCAL" />
       <updated>1770166419874</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="refactored out computing vi stats for each field, clean up">
+      <option name="closed" value="true" />
+      <created>1770168359310</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1770168359310</updated>
+    </task>
+    <task id="LOCAL-00008" summary="refactored out log_columns to engine.compute.stats as kwargs">
+      <option name="closed" value="true" />
+      <created>1770169506317</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1770169506317</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -201,7 +219,9 @@
     <MESSAGE value="moved config to sep dataclass, module" />
     <MESSAGE value="added context manager for rasters" />
     <MESSAGE value="refactored out io and viz to sep modules" />
-    <option name="LAST_COMMIT_MESSAGE" value="refactored out io and viz to sep modules" />
+    <MESSAGE value="refactored out computing vi stats for each field, clean up" />
+    <MESSAGE value="refactored out log_columns to engine.compute.stats as kwargs" />
+    <option name="LAST_COMMIT_MESSAGE" value="refactored out log_columns to engine.compute.stats as kwargs" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
