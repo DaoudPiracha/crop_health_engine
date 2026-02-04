@@ -16,18 +16,6 @@ from engine.constants import (
 )
 
 
-
-LOG_COLUMNS = [
-    "date", "name",
-    "ndvi_mean", "ndvi_std",
-    "ndre_mean", "ndre_std",
-    "evi_mean", "evi_std",
-    "cire_mean", "cire_std",
-    "mcari_mean", "mcari_std",
-    "msavi_mean", "msavi_std",
-]
-
-
 def calculate_band_stats(band_values: np.ndarray) -> tuple[float, float]:
     mean = np.nanmean(band_values)
     std = np.nanstd(band_values)
