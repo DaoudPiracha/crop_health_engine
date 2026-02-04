@@ -1,23 +1,10 @@
 
-import pandas as pd
-import geopandas as gpd
 from shapely.geometry import box
 
 from engine.pipeline_config import PipelineConfig
 from engine.compute.stats import build_field_veg_index_stats, write_field_veg_index_stats
 from engine.io.assets import collect_image_files, load_boundaries
 from engine.viz.preview import preview_images
-
-
-LOG_COLUMNS = [
-    "date", "name",
-    "ndvi_mean", "ndvi_std",
-    "ndre_mean", "ndre_std",
-    "evi_mean", "evi_std",
-    "cire_mean", "cire_std",
-    "mcari_mean", "mcari_std",
-    "msavi_mean", "msavi_std",
-]
 
 
 def main(cfg: PipelineConfig) -> None:
@@ -31,8 +18,7 @@ def main(cfg: PipelineConfig) -> None:
     lat_min, lat_max, lon_min, lon_max = cfg.bbox_latlon
     bounding_box = box(lon_min, lat_min, lon_max, lat_max)
 
-    ndvi_log = build_field_veg_index_stats(img_files, gdf_boundaries, cfg.target_crs, cfg.only_visual,
-                                           log_columns=LOG_COLUMNS)
+    ndvi_log = build_field_veg_index_stats(img_files, gdf_boundaries, cfg.target_crs, cfg.only_visual)
     out_path = write_field_veg_index_stats(ndvi_log, cfg.season, cfg.crop_id, cfg.write_to_file)
     print(f"Wrote log to: {out_path}")
 

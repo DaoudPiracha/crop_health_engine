@@ -8,13 +8,22 @@ from engine.io.raster import open_raster_in_crs, crop_raster_with_polygon
 
 
 # todo: move the crop function out of this
+LOG_COLUMNS = [
+    "date", "name",
+    "ndvi_mean", "ndvi_std",
+    "ndre_mean", "ndre_std",
+    "evi_mean", "evi_std",
+    "cire_mean", "cire_std",
+    "mcari_mean", "mcari_std",
+    "msavi_mean", "msavi_std",
+]
 
 def build_field_veg_index_stats(
     img_file_paths: list[str],
     gdf_overlapping: gpd.GeoDataFrame,
     target_crs: str,
     only_visual: bool,
-    log_columns: list[str]
+    log_columns: list[str] = LOG_COLUMNS,
 ) -> pd.DataFrame:
     """
     Build a per-(date, field/polygon) vegetation index statistics table.
