@@ -5,8 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="3a172a95-c10b-42ba-9400-7c6f1d529895" name="Changes" comment="added context manager for rasters">
-      <change afterPath="$PROJECT_DIR$/engine/compute/indices.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/engine/io/assets.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/engine/io/raster.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/engine/viz/preview.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_reference/wattoo/kharif_wattoo_field_logs_new_1.csv" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" beforeDir="false" afterPath="$PROJECT_DIR$/old_reference/wattoo/wattoo_planet_image_to_vi.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
