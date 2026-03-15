@@ -10,6 +10,8 @@ import numpy as np
 from sklearn.cluster import KMeans
 from matplotlib.colors import Normalize
 from matplotlib import cm
+import os
+
 def cluster_time_series_and_plot(time_series_df, n_clusters=6):
     """
     Cluster fields based on their full vegetation index time series
@@ -32,7 +34,6 @@ def cluster_time_series_and_plot(time_series_df, n_clusters=6):
     labels = kmeans.fit_predict(X)
 
     clusters = pd.Series(labels, index=time_series_df.columns)
-
     # Plot each cluster
     for cluster_id in range(n_clusters):
 
@@ -71,23 +72,45 @@ if __name__ == '__main__':
     log_file = f"{season}_{crop_id}_field_veg_index_stats.csv"
     log_file_rao = f"../kharif_{crop_id}_field_veg_index_stats.csv"
 
+    show_z_plots = False
+
+
+    asset_dir = "/Users/daoud/PycharmAssets/shahmeer_farms"
+    boundaries_file = f"{asset_dir}/shahmeer_drawn_named.geojson"
+
+    if os.path.exists(boundaries_file):
+
+        boundaries = gpd.read_file(boundaries_file)
+        boundaries.boundary.plot()
+        plt.show()
+    else:
+        raise ValueError('no boundaries file')
+
     ndvi_log = pd.read_csv(log_file)
     ndvi_log = ndvi_log.sort_values(by='date')
     ndvi_log_select = ndvi_log[ndvi_log[('name')].isin([720, 821])]
-    # ndvi_log = ndvi_log_select
+
     duplicate_groups = ndvi_log.groupby(['name', 'date']).filter(lambda x: len(x) > 1)
     ndvi_log = ndvi_log[~ndvi_log.index.isin(duplicate_groups.index)]
 
     veg_idx = 'ndre'
-    veg_idx_n = ['ndvi', 'evi', 'ndre', 'cire']
+    veg_idx_n = ['ndvi', 'cire', 'evi', 'ndre']
     for plot_idx, veg_idx_i in enumerate(veg_idx_n):
         ndvi_log_clean = ndvi_log[~ndvi_log['ndvi_mean'].isna()]
-        ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['ndvi_mean']< 1]
-        ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['evi_mean']< 4]
+        # ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['ndvi_mean']< 1]
+        # ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['evi_mean']< 4]
 
-        ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['cire_mean']< 10]
+        # ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['cire_mean']< 10]
         print (len(ndvi_log_clean))
-        ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['ndvi_std']< 0.05]
+        # commented line below is incorrrect, it should avg the std and see if above a threshold for an id, i.e the value of the id is not homogenous
+        field_std = ndvi_log_clean.groupby('name')[f'{veg_idx_i}_std'].mean()
+
+        # Keep only fields that are consistent (below threshold)
+        threshold = 0.1
+        fields_to_keep_by_std = field_std[field_std < threshold].index
+
+        # Filter the main dataframe
+        ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['name'].isin(fields_to_keep_by_std)]
         print (len(ndvi_log_clean))
 
 
@@ -95,9 +118,29 @@ if __name__ == '__main__':
         time_series_df = time_series_df.interpolate(method='linear')
         time_series_df = time_series_df.fillna(method='bfill').fillna(method='ffill')
 
+        clusters = cluster_time_series_and_plot(time_series_df, n_clusters=20)
+        clusters_df = clusters.reset_index()
+        clusters_df.columns = ["name", "cluster"]
+        boundaries_clustered = pd.merge(boundaries, clusters_df, left_on='Name', right_on='name')
+
+        clusters_to_keep = [2]
+
+        # boundaries_clustered = boundaries_clustered[boundaries_clustered['cluster'].isin(clusters_to_keep)]
+        boundaries_clustered.plot(
+            column="cluster",
+            cmap="tab10",
+            legend=True,
+            edgecolor="black"
+        )
+
+        plt.title("Field Clusters")
+        plt.show()
 
 
+        fields_to_keep = clusters[clusters.isin(clusters_to_keep)].index
 
+        time_series_filtered = time_series_df[fields_to_keep]
+        time_series_df = time_series_filtered
         time_series_df.plot(title=f'plant {veg_idx_i} levels', color="blue",
     alpha=0.05).legend(
             bbox_to_anchor=(1.0, 1.0),
@@ -107,7 +150,6 @@ if __name__ == '__main__':
 
         print (f'plotted {veg_idx_i}')
 
-        # clusters = cluster_time_series_and_plot(time_series_df, n_clusters=8)
 
         vi_mean = time_series_df.mean(axis = 1)
         vi_std =  time_series_df.std(axis = 1)
@@ -119,12 +161,18 @@ if __name__ == '__main__':
         z_score_mean_early = z_scores_df.mean(axis=0)
         z_score_mean_early.to_csv(f'{crop_id}_{veg_idx_i}_z_scores_norm.csv')
 
-        z_scores_df.plot(color = 'blue', alpha = 0.05)
-        plt.show()
+        if show_z_plots:
+            z_scores_df.plot(color = 'blue', alpha = 0.05)
+            plt.show()
 
-    # asset_dir = "/Users/daoud/PycharmAssets/shahmeer_farms"
-    # boundaries_file = f"{asset_dir}/shahmeer_drawn_geo.geojson",
-    #
-    # boundaries = gpd.read_file(boundaries_file)
-    # boundaries.boundary.plot()
-    # plt.show()
+        boundaries_filtered = boundaries_clustered
+        boundaries_filtered['z_score'] = boundaries_filtered['name'].map(z_score_mean_early)
+
+        boundaries_filtered.plot(
+            column='z_score',
+            cmap='RdYlGn',
+            legend=True,
+            edgecolor='black'
+        )
+        plt.title(f'{veg_idx_i} Fields Colored by Z-score')
+        plt.show()
