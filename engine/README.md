@@ -6,6 +6,9 @@ A modular pipeline for computing vegetation indices and crop health statistics f
 
 The engine module processes multispectral satellite imagery (Planet, SkyWatch) to extract vegetation health metrics for agricultural fields. It computes time-series statistics of various vegetation indices (NDVI, EVI, CIRE, etc.) for each field polygon and outputs structured CSV data.
 
+## To Do 
+- Add mean normalization of cire score as a step at the end of the pipeline
+
 ## Architecture
 
 ```

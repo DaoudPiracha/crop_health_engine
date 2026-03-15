@@ -11,17 +11,17 @@ logging.basicConfig(
 )
 
 if __name__ == "__main__":
-    asset_dir = "/Users/daoud/PycharmAssets/wattoo_farms"
+    asset_dir = "/Users/daoud/PycharmAssets/shahmeer_farms"
 
     cfg = PipelineConfig(
         asset_dir=asset_dir,
         season="kharif",
-        crop_id="wattoo",
+        crop_id="shahmeer",
         file_dir=f"{asset_dir}/*/PSScene/",
-        boundaries_file=f"{asset_dir}/wattoo_farms.geojson",
-        cluster_file="/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/sufi/cluster_cire.csv",
-        z_score_ts_file="/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/wattoo_cire_z_scores_ts.csv",
-        z_score_glob="/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/wattoo/wattoo_cire_z_scores_norm.csv",
+        boundaries_file=f"{asset_dir}/shahmeer_drawn_named.geojson",
+        # cluster_file="/Users/daoud/PycharmProjects/DISA/ai4h_disa/experimental/sufi/cluster_cire.csv",
+        # z_score_ts_file="./shahmeer_cire_z_scores_ts.csv",
+        # z_score_glob="./shahmeer_cire_z_scores_norm.csv",
         target_crs="epsg:3857",
         only_visual=False,
         write_to_file=True,
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         color_z_scores=True,
         show_z_ts_plots=False,
         reset_names=False,
-        show_images_at_each_ts = False,
+        show_images_at_each_ts = True,
         unwanted_ids=["301", "302", "304", "153", "176", "170", "175", "172"],
         bbox_latlon=(30.6655, 30.676, 73.675377, 73.6815427),
     )

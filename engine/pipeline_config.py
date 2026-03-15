@@ -11,10 +11,6 @@ class PipelineConfig:
     file_dir: str  # glob root for images (already includes /*/PSScene/)
     boundaries_file: str
 
-    cluster_file: str
-    z_score_ts_file: str
-    z_score_glob: str
-
     target_crs: str
 
     only_visual: bool
