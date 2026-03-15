@@ -11,55 +11,86 @@ from sklearn.cluster import KMeans
 from matplotlib.colors import Normalize
 from matplotlib import cm
 import os
+from sklearn.decomposition import PCA
 
-def cluster_time_series_and_plot(time_series_df, n_clusters=6):
+def cluster_time_series_and_plot(time_series_df, n_clusters=6, use_pca=False, n_components=5):
     """
-    Cluster fields based on their full vegetation index time series
-    without normalization.
-
-    Parameters
-    ----------
-    time_series_df : DataFrame
-        rows = dates
-        columns = fields
+    Cluster fields based on their full vegetation index time series.
+    Optionally reduce dimensionality using PCA.
     """
+    X = time_series_df.T.values  # shape: (fields, time_steps)
 
-    # Convert to clustering format
-    # rows = fields
-    # columns = time steps
-    X = time_series_df.T.values
+    if use_pca:
+        pca = PCA(n_components=n_components, random_state=0)
+        X_pca = pca.fit_transform(X)
+        X = X_pca  # use PCA-reduced data for clustering
 
     # Run clustering
     kmeans = KMeans(n_clusters=n_clusters, random_state=0)
     labels = kmeans.fit_predict(X)
 
     clusters = pd.Series(labels, index=time_series_df.columns)
+
     # Plot each cluster
     for cluster_id in range(n_clusters):
-
         fields_in_cluster = clusters[clusters == cluster_id].index
-
         cluster_df = time_series_df[fields_in_cluster]
 
         print(f"Cluster {cluster_id}: {len(fields_in_cluster)} fields")
 
         plt.figure(figsize=(8,5))
-
-        cluster_df.plot(
-            ax=plt.gca(),
-            legend=False,
-            alpha=0.15,
-            color="blue"
-        )
-
-        # plot cluster mean curve
-        cluster_df.mean(axis=1).plot(
-            ax=plt.gca(),
-            color="red",
-            linewidth=3
-        )
-
+        cluster_df.plot(ax=plt.gca(), legend=False, alpha=0.15, color="blue")
+        cluster_df.mean(axis=1).plot(ax=plt.gca(), color="red", linewidth=3)
         plt.title(f"Cluster {cluster_id}")
+        plt.xlabel("Date")
+        plt.ylabel("Vegetation Index")
+        plt.show()
+
+    return clusters
+
+# Install tslearn if not already installed
+# pip install tslearn
+
+from tslearn.clustering import KShape
+from tslearn.preprocessing import TimeSeriesScalerMeanVariance
+
+def kshape_cluster_time_series(time_series_df, n_clusters=6):
+    """
+    Cluster fields based on their full vegetation index time series using k-Shape.
+
+    Parameters
+    ----------
+    time_series_df : DataFrame
+        rows = dates
+        columns = fields
+    n_clusters : int
+        Number of clusters
+    """
+
+    # Convert to (fields, time_steps, 1) for tslearn
+    X = time_series_df.T.values[:, :, np.newaxis]
+
+    # Normalize time series
+    scaler = TimeSeriesScalerMeanVariance()
+    X_scaled = scaler.fit_transform(X)
+
+    # Run k-Shape
+    ks = KShape(n_clusters=n_clusters, random_state=0)
+    labels = ks.fit_predict(X_scaled)
+
+    clusters = pd.Series(labels, index=time_series_df.columns)
+
+    # Plot each cluster
+    for cluster_id in range(n_clusters):
+        fields_in_cluster = clusters[clusters == cluster_id].index
+        cluster_df = time_series_df[fields_in_cluster]
+
+        print(f"Cluster {cluster_id}: {len(fields_in_cluster)} fields")
+
+        plt.figure(figsize=(8,5))
+        cluster_df.plot(ax=plt.gca(), legend=False, alpha=0.15, color="blue")
+        cluster_df.mean(axis=1).plot(ax=plt.gca(), color="red", linewidth=3)
+        plt.title(f"k-Shape Cluster {cluster_id}")
         plt.xlabel("Date")
         plt.ylabel("Vegetation Index")
         plt.show()
@@ -118,7 +149,9 @@ if __name__ == '__main__':
         time_series_df = time_series_df.interpolate(method='linear')
         time_series_df = time_series_df.fillna(method='bfill').fillna(method='ffill')
 
-        clusters = cluster_time_series_and_plot(time_series_df, n_clusters=20)
+        # clusters = cluster_time_series_and_plot(time_series_df, use_pca=False, n_clusters=20)
+        clusters = kshape_cluster_time_series(time_series_df, n_clusters=7)
+
         clusters_df = clusters.reset_index()
         clusters_df.columns = ["name", "cluster"]
         boundaries_clustered = pd.merge(boundaries, clusters_df, left_on='Name', right_on='name')
