@@ -353,6 +353,8 @@ def plot_block_map_interactive(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataF
     else:
         gdf["WWF Name"] = None
 
+    gdf = gdf.rename(columns={"name": "field_id", "cluster": "crop_id", "block_id": "Block ID"})
+
     unassigned = boundaries[~boundaries[name_col].isin(blocks_df["name"])].copy()
     unassigned = unassigned.to_crs("epsg:4326")
 
