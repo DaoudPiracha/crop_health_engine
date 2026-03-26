@@ -46,6 +46,30 @@ COLOR_BG = "#1e1e2e"
 COLOR_DIVIDER = "#313244"
 
 # ---------------------------------------------------------------------------
+# Z-score color scale  (red → yellow → green)
+# ---------------------------------------------------------------------------
+
+_ZSCORE_STOPS = [
+    (231, 76,  60),   # red
+    (241, 196, 15),   # yellow
+    (46,  204, 113),  # green
+]
+
+
+def z_score_bin_color(bin_idx: int, n_bins: int) -> str:
+    """Map a bin index [0, n_bins-1] to a red→yellow→green hex color."""
+    t = bin_idx / max(n_bins - 1, 1)          # 0.0 = red, 1.0 = green
+    t_scaled = t * (len(_ZSCORE_STOPS) - 1)   # position within stops
+    lo = int(t_scaled)
+    hi = min(lo + 1, len(_ZSCORE_STOPS) - 1)
+    frac = t_scaled - lo
+    r = int(_ZSCORE_STOPS[lo][0] + (_ZSCORE_STOPS[hi][0] - _ZSCORE_STOPS[lo][0]) * frac)
+    g = int(_ZSCORE_STOPS[lo][1] + (_ZSCORE_STOPS[hi][1] - _ZSCORE_STOPS[lo][1]) * frac)
+    b = int(_ZSCORE_STOPS[lo][2] + (_ZSCORE_STOPS[hi][2] - _ZSCORE_STOPS[lo][2]) * frac)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+# ---------------------------------------------------------------------------
 # Chart
 # ---------------------------------------------------------------------------
 

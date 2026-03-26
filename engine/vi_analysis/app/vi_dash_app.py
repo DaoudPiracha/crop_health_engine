@@ -27,6 +27,7 @@ from engine.vi_analysis.app.theme import (
 # Unpack singletons for convenience
 _vi_log            = app_data.vi_log
 _layers            = app_data.layers
+_z_score_layers    = app_data.z_score_layers
 _wwf_geojson       = app_data.wwf_geojson
 _map_center        = app_data.map_center
 _field_props_map   = app_data.field_props_map
@@ -56,6 +57,16 @@ def _map_panel() -> html.Div:
         )
         for i, layer in enumerate(_layers)
     ]
+    zscore_layers = [
+        dl.GeoJSON(
+            id={"type": "zscore-layer", "index": i},
+            data=layer.geojson,
+            style={"fillColor": layer.color, "color": "black",
+                   "weight": 0.8, "fillOpacity": 0},  # hidden by default
+            hoverStyle={"weight": 2, "color": "white", "fillOpacity": 0},
+        )
+        for i, layer in enumerate(_z_score_layers)
+    ]
     return html.Div(
         style={"flex": "1", "position": "relative"},
         children=[
@@ -70,6 +81,7 @@ def _map_panel() -> html.Div:
                         attribution="Esri World Imagery",
                     ),
                     *field_layers,
+                    *zscore_layers,
                     dl.GeoJSON(
                         id="wwf-layer",
                         data=_wwf_geojson,
@@ -104,6 +116,8 @@ def _sidebar() -> html.Div:
                 children=[
                     html.Button("Fields",         id="btn-fields",   n_clicks=0, style=TOGGLE_STYLE_ON),
                     html.Button("Outlines only",  id="btn-outlines", n_clicks=0, style=TOGGLE_STYLE),
+                    html.Button("Z-Score",        id="btn-zscore",   n_clicks=0,
+                                style=TOGGLE_STYLE if _z_score_layers else {**TOGGLE_STYLE, "opacity": "0.4", "cursor": "not-allowed"}),
                     html.Button("WWF boundaries", id="btn-wwf",      n_clicks=0, style=TOGGLE_STYLE),
                     html.Button("Compare",        id="btn-compare",  n_clicks=0, style=TOGGLE_STYLE),
                 ],
@@ -165,33 +179,58 @@ def _ndvi_trace(field_id: str, label: str, color: str) -> go.Scatter | None:
 # ---------------------------------------------------------------------------
 
 @app.callback(
-    Output({"type": "field-layer", "index": ALL}, "style"),
-    Output({"type": "field-layer", "index": ALL}, "hoverStyle"),
-    Output("btn-fields", "style"),
-    Output("btn-outlines", "style"),
-    Input("btn-fields", "n_clicks"),
-    Input("btn-outlines", "n_clicks"),
+    Output({"type": "field-layer",  "index": ALL}, "data"),
+    Output({"type": "field-layer",  "index": ALL}, "style"),
+    Output({"type": "field-layer",  "index": ALL}, "hoverStyle"),
+    Output({"type": "zscore-layer", "index": ALL}, "data"),
+    Output({"type": "zscore-layer", "index": ALL}, "style"),
+    Output({"type": "zscore-layer", "index": ALL}, "hoverStyle"),
+    Output("btn-fields",  "style"),
+    Output("btn-outlines","style"),
+    Output("btn-zscore",  "style"),
+    Input("btn-fields",  "n_clicks"),
+    Input("btn-outlines","n_clicks"),
+    Input("btn-zscore",  "n_clicks"),
 )
-def toggle_fields(fields_clicks, outlines_clicks):
-    fields_on  = (fields_clicks  % 2) == 0
+def toggle_fields(fields_clicks, outlines_clicks, zscore_clicks):
+    fields_on   = (fields_clicks   % 2) == 0
     outlines_on = (outlines_clicks % 2) == 1
-    hover = {"weight": 2, "color": "red" if outlines_on else "white", "fillOpacity": 0}
+    zscore_on   = (zscore_clicks   % 2) == 1 and bool(_z_score_layers)
 
-    styles = []
-    for layer in _layers:
-        if not fields_on:
-            styles.append({"fillColor": layer.color, "color": "black", "weight": 0, "fillOpacity": 0})
-        elif outlines_on:
-            styles.append({"fillColor": layer.color, "color": "white", "weight": 1, "fillOpacity": 0})
-        else:
-            styles.append({"fillColor": layer.color, "color": "black",
-                            "weight": 0.8, "fillOpacity": layer.fill_opacity})
+    hover_color = "red" if outlines_on else "white"
+    hover        = {"weight": 2, "color": hover_color, "fillOpacity": 0}
+    hover_hidden = {"weight": 0, "color": "transparent", "fillOpacity": 0}
+
+    def _layer_style(layer: "Layer") -> dict:
+        if outlines_on:
+            return {"fillColor": layer.color, "color": "white", "weight": 1, "fillOpacity": 0}
+        return {"fillColor": layer.color, "color": "black",
+                "weight": 0.8, "fillOpacity": layer.fill_opacity}
+
+    # Use data=None to fully remove a layer from the map (prevents event interception)
+    if not fields_on:
+        block_data  = [None] * len(_layers)
+        zscore_data = [None] * len(_z_score_layers)
+    elif zscore_on:
+        block_data  = [None] * len(_layers)
+        zscore_data = [l.geojson for l in _z_score_layers]
+    else:
+        block_data  = [l.geojson for l in _layers]
+        zscore_data = [None] * len(_z_score_layers)
+
+    block_hover  = [hover if fields_on and not zscore_on else hover_hidden for _ in _layers]
+    zscore_hover = [hover if fields_on and zscore_on     else hover_hidden for _ in _z_score_layers]
 
     return (
-        styles,
-        [hover] * len(_layers),
-        TOGGLE_STYLE_ON if fields_on  else TOGGLE_STYLE,
+        block_data,
+        [_layer_style(l) for l in _layers],
+        block_hover,
+        zscore_data,
+        [_layer_style(l) for l in _z_score_layers],
+        zscore_hover,
+        TOGGLE_STYLE_ON if fields_on   else TOGGLE_STYLE,
         TOGGLE_STYLE_ON if outlines_on else TOGGLE_STYLE,
+        TOGGLE_STYLE_ON if zscore_on   else TOGGLE_STYLE,
     )
 
 
@@ -219,11 +258,12 @@ else:
 
 @app.callback(
     Output("compare-store", "data"),
-    Input({"type": "field-layer", "index": ALL}, "clickData"),
+    Input({"type": "field-layer",  "index": ALL}, "clickData"),
+    Input({"type": "zscore-layer", "index": ALL}, "clickData"),
     Input("btn-compare", "n_clicks"),
     State("compare-store", "data"),
 )
-def update_store(all_click_data, compare_clicks, store):
+def update_store(field_click_data, zscore_click_data, compare_clicks, store):
     compare_on = (compare_clicks % 2) == 1
 
     if ctx.triggered_id == "btn-compare":
@@ -232,6 +272,9 @@ def update_store(all_click_data, compare_clicks, store):
         return {**store, "compare_on": True}
 
     if not ctx.triggered:
+        return store
+    triggered_prop = ctx.triggered[0].get("prop_id", "")
+    if "clickData" not in triggered_prop:
         return store
     click_data = ctx.triggered[0]["value"]
     if not click_data or not isinstance(click_data, dict):

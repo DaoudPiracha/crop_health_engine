@@ -14,7 +14,7 @@ import geopandas as gpd
 import pandas as pd
 
 from engine.vi_analysis.vi_analysis import block_colors, load_vi_log, rgb_to_hex
-from engine.vi_analysis.app.theme import UNASSIGNED_COLOR
+from engine.vi_analysis.app.theme import UNASSIGNED_COLOR, z_score_bin_color
 from engine.vi_analysis.app.config import ASSET_DIR, CROP, SEASON
 
 # ---------------------------------------------------------------------------
@@ -24,9 +24,11 @@ from engine.vi_analysis.app.config import ASSET_DIR, CROP, SEASON
 BOUNDARIES_FILE = f"{ASSET_DIR}/{CROP}_drawn_named.geojson"
 
 _engine_root = os.path.join(os.path.dirname(__file__), "..")
-LOG_FILE    = os.path.join(_engine_root, f"../{SEASON}_{CROP}_field_veg_index_stats.csv")
-BLOCKS_FILE = os.path.join(_engine_root, f"../{CROP}_blocks.csv")
-WWF_FILE    = os.path.join(_engine_root, f"../{CROP}_wwf_map.geojson")
+LOG_FILE         = os.path.join(_engine_root, f"../{SEASON}_{CROP}_field_veg_index_stats.csv")
+BLOCKS_FILE      = os.path.join(_engine_root, f"../{CROP}_blocks.csv")
+WWF_FILE         = os.path.join(_engine_root, f"../{CROP}_wwf_map.geojson")
+Z_SCORE_FILE     = os.path.join(_engine_root, f"../{CROP}_ndvi_z_scores_norm.csv")
+N_ZSCORE_BINS    = 10
 
 NAME_COL = "Name"
 
@@ -43,13 +45,14 @@ class Layer(NamedTuple):
 
 @dataclass
 class AppData:
-    vi_log:          pd.DataFrame
-    gdf:             gpd.GeoDataFrame
-    layers:          list[Layer]
-    wwf_geojson:     dict | None
-    map_center:      list[float]
-    field_props_map: dict[str, dict]    # field_id → {block_id, cluster, wwf_name}
-    field_geojson_map: dict[str, dict]  # field_id → geojson FeatureCollection
+    vi_log:            pd.DataFrame
+    gdf:               gpd.GeoDataFrame
+    layers:            list[Layer]
+    z_score_layers:    list[Layer]       # empty list if z-score file absent
+    wwf_geojson:       dict | None
+    map_center:        list[float]
+    field_props_map:   dict[str, dict]   # field_id → {block_id, cluster, wwf_name}
+    field_geojson_map: dict[str, dict]   # field_id → geojson FeatureCollection
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +71,7 @@ def load_data() -> AppData:
     boundaries = gpd.read_file(BOUNDARIES_FILE).to_crs("epsg:4326")
     blocks_df  = pd.read_csv(BLOCKS_FILE)
     vi_log     = load_vi_log(LOG_FILE)
+    vi_log["name"] = vi_log["name"].astype(str)
 
     # Field GeoDataFrame
     color_map = {bid: rgb_to_hex(rgb) for bid, rgb in block_colors(blocks_df).items()}
@@ -78,6 +82,7 @@ def load_data() -> AppData:
     gdf["block_id"] = gdf["block_id"].fillna(-1).astype(int)
     gdf["cluster"]  = gdf["cluster"].fillna(-1).astype(int)
     gdf = gdf.rename(columns={NAME_COL: "field_id"})
+    gdf["field_id"] = gdf["field_id"].astype(str)
 
     # WWF spatial join
     wwf_geojson: dict | None = None
@@ -95,6 +100,23 @@ def load_data() -> AppData:
         Layer(color, 0.5 if color == UNASSIGNED_COLOR else 0.75, group.__geo_interface__)
         for color, group in gdf.groupby("color")
     ]
+
+    # Z-score layers (quantile bins → red-yellow-green gradient)
+    z_score_layers: list[Layer] = []
+    if os.path.exists(Z_SCORE_FILE):
+        z_df = pd.read_csv(Z_SCORE_FILE)
+        z_df["field_id"] = z_df["name"].astype(str)
+        z_df["bin"] = pd.qcut(z_df["0"], N_ZSCORE_BINS, labels=False, duplicates="drop")
+        n_actual_bins = z_df["bin"].nunique()
+        for bin_idx, group in z_df.groupby("bin"):
+            color   = z_score_bin_color(int(bin_idx), n_actual_bins)
+            subset  = gdf[gdf["field_id"].isin(group["field_id"])]
+            if not subset.empty:
+                z_score_layers.append(Layer(color, 0.75, subset.__geo_interface__))
+        # Grey layer for fields with no z-score
+        unscored = gdf[~gdf["field_id"].isin(z_df["field_id"])]
+        if not unscored.empty:
+            z_score_layers.append(Layer(UNASSIGNED_COLOR, 0.5, unscored.__geo_interface__))
 
     # Map centre (compute centroid once)
     centroid   = boundaries.geometry.unary_union.centroid
@@ -118,6 +140,7 @@ def load_data() -> AppData:
         vi_log=vi_log,
         gdf=gdf,
         layers=layers,
+        z_score_layers=z_score_layers,
         wwf_geojson=wwf_geojson,
         map_center=map_center,
         field_props_map=field_props_map,
