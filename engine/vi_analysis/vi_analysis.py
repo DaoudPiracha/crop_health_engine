@@ -288,7 +288,7 @@ def plot_z_score_map(boundaries: gpd.GeoDataFrame, clusters: pd.Series,
     plt.show()
 
 
-def _block_colors(blocks_df: pd.DataFrame, saturation: float = 0.45,
+def block_colors(blocks_df: pd.DataFrame, saturation: float = 0.45,
                   value: float = 0.80, hue_jitter: float = 0.06) -> dict:
     """
     Assign each block a muted colour where:
@@ -316,7 +316,7 @@ def _block_colors(blocks_df: pd.DataFrame, saturation: float = 0.45,
     return colors
 
 
-def _rgb_to_hex(rgb: tuple) -> str:
+def rgb_to_hex(rgb: tuple) -> str:
     return "#{:02x}{:02x}{:02x}".format(int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
 
 
@@ -336,7 +336,7 @@ def plot_block_map_interactive(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataF
     """
     import leafmap.foliumap as leafmap
 
-    block_colors = {bid: _rgb_to_hex(rgb) for bid, rgb in _block_colors(blocks_df).items()}
+    block_colors = {bid: rgb_to_hex(rgb) for bid, rgb in block_colors(blocks_df).items()}
 
     gdf = boundaries[[name_col, "geometry"]].merge(blocks_df, left_on=name_col, right_on="name")
     gdf["color"] = gdf["block_id"].map(block_colors)
@@ -408,7 +408,7 @@ def plot_block_map(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataFrame,
     ----------
     overlay : optional GeoDataFrame whose boundaries are drawn on top in red
     """
-    block_colors = _block_colors(blocks_df)
+    block_colors = block_colors(blocks_df)
 
     gdf = boundaries[[name_col, "geometry"]].merge(blocks_df, left_on=name_col, right_on="name")
     gdf["color"] = gdf["block_id"].map(block_colors)
@@ -500,7 +500,6 @@ if __name__ == "__main__":
     m.to_html(f"{crop_id}_block_map.html")
     print(f"Interactive map saved to {crop_id}_block_map.html")
 
-    assert False
     for veg_idx in veg_indices:
         print(f"\n--- {veg_idx} ---")
         ts = build_time_series(ndvi_log, veg_idx, std_threshold=std_threshold)
