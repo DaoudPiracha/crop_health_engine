@@ -348,10 +348,10 @@ def plot_block_map_interactive(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataF
         joined = gpd.sjoin(gdf, wwf, how="left", predicate="intersects")
         # If a field touches multiple WWF polygons take the first match
         joined = joined[~joined.index.duplicated(keep="first")]
-        joined = joined.rename(columns={overlay_name_col: "wwf_name"})
-        gdf = joined.drop(columns=["index_right"], errors="ignore")
+        joined = joined.rename(columns={f"{overlay_name_col}_right": "WWF Name"})
+        gdf = joined.drop(columns=["index_right", f"{name_col}_left"], errors="ignore")
     else:
-        gdf["wwf_name"] = None
+        gdf["WWF Name"] = None
 
     unassigned = boundaries[~boundaries[name_col].isin(blocks_df["name"])].copy()
     unassigned = unassigned.to_crs("epsg:4326")
