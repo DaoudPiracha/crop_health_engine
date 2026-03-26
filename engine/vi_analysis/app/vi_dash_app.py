@@ -38,7 +38,17 @@ _field_geojson_map = app_data.field_geojson_map
 # ---------------------------------------------------------------------------
 
 # compare_on lives in the store so both callbacks share a single source of truth
-_EMPTY_STORE = {"field_a": None, "field_b": None, "next_slot": "a", "compare_on": False}
+_EMPTY_STORE = {"field_a": None, "field_b": None, "next_slot": "a", "compare_on": False, "vi": "ndvi"}
+
+_VI_OPTIONS = [
+    {"label": "NDVI", "value": "ndvi"},
+    {"label": "EVI",  "value": "evi"},
+    {"label": "NDRE", "value": "ndre"},
+    {"label": "CIRE", "value": "cire"},
+]
+
+# Y-axis range per VI
+_VI_YRANGE = {"ndvi": [0, 1], "evi": [0, 2], "ndre": [0, 1], "cire": [0, 5]}
 
 app = dash.Dash(__name__)
 
@@ -123,8 +133,17 @@ def _sidebar() -> html.Div:
                 ],
             ),
             html.P(id="sidebar-hint",
-                   children="Click a field to view its NDVI time series.",
+                   children="Click a field to view its VI time series.",
                    style={"color": COLOR_MUTED, "fontSize": "13px", "margin": "0"}),
+            dcc.RadioItems(
+                id="vi-selector",
+                options=_VI_OPTIONS,
+                value="ndvi",
+                inline=True,
+                style={"fontSize": "12px", "color": COLOR_TEXT, "gap": "10px"},
+                inputStyle={"marginRight": "4px"},
+                labelStyle={"marginRight": "12px"},
+            ),
             html.Div(id="field-info", style={"fontSize": "13px"}),
             dcc.Graph(id="vi-chart", config={"displayModeBar": False},
                       style={"height": "340px"}),
@@ -160,13 +179,14 @@ def _field_card(field_id: str, label: str, label_color: str) -> html.Div:
     ])
 
 
-def _ndvi_trace(field_id: str, label: str, color: str) -> go.Scatter | None:
+def _vi_trace(field_id: str, label: str, color: str, vi: str) -> go.Scatter | None:
+    col = f"{vi}_mean"
     data = _vi_log[_vi_log["name"] == field_id].sort_values("date")
-    if data.empty:
+    if data.empty or col not in data.columns:
         return None
     return go.Scatter(
         x=pd.to_datetime(data["date"]),
-        y=data["ndvi_mean"],
+        y=data[col],
         mode="lines+markers",
         name=f"{label}: {field_id}",
         line={"color": color, "width": 2},
@@ -261,9 +281,13 @@ else:
     Input({"type": "field-layer",  "index": ALL}, "clickData"),
     Input({"type": "zscore-layer", "index": ALL}, "clickData"),
     Input("btn-compare", "n_clicks"),
+    Input("vi-selector", "value"),
     State("compare-store", "data"),
 )
-def update_store(field_click_data, zscore_click_data, compare_clicks, store):
+def update_store(field_click_data, zscore_click_data, compare_clicks, vi_value, store):
+    if ctx.triggered_id == "vi-selector":
+        return {**store, "vi": vi_value}
+
     compare_on = (compare_clicks % 2) == 1
 
     if ctx.triggered_id == "btn-compare":
@@ -305,19 +329,20 @@ def render_selection(store):
     compare_on = store.get("compare_on", False)
     field_a    = store.get("field_a")
     field_b    = store.get("field_b")
+    vi         = store.get("vi", "ndvi")
 
     hint = (
         f"Click to set Field {'A' if store.get('next_slot', 'a') == 'a' else 'B'}."
         if compare_on else
-        "Click a field to view its NDVI time series."
+        "Click a field to view its VI time series."
     )
 
     if not field_a:
         return "", empty_figure(), TOGGLE_STYLE_ON if compare_on else TOGGLE_STYLE, hint, None, None
 
     fig = empty_figure()
-    trace_a = _ndvi_trace(field_a, "A", TRACE_COLOR_A)
-    trace_b = _ndvi_trace(field_b, "B", TRACE_COLOR_B) if field_b else None
+    trace_a = _vi_trace(field_a, "A", TRACE_COLOR_A, vi)
+    trace_b = _vi_trace(field_b, "B", TRACE_COLOR_B, vi) if field_b else None
 
     if trace_a:
         fig.add_trace(trace_a)
@@ -332,8 +357,8 @@ def render_selection(store):
     fig.update_layout(
         legend={"font": {"size": 11}, "bgcolor": "rgba(0,0,0,0)"},
         xaxis_title="Date",
-        yaxis_title="NDVI",
-        yaxis={"range": [0, 1], "gridcolor": COLOR_DIVIDER},
+        yaxis_title=vi.upper(),
+        yaxis={"range": _VI_YRANGE.get(vi, [0, 1]), "gridcolor": COLOR_DIVIDER},
     )
 
     if field_b:
