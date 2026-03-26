@@ -2,7 +2,8 @@
 vi_dash_app.py — Interactive Dash app for VI time-series exploration.
 
 Click any field polygon on the map to display its NDVI / EVI / NDRE
-time series in the sidebar.
+time series in the sidebar. Use the Layers toggle in the sidebar to
+show/hide color groups.
 
 Usage:
     python -m engine.vi_analysis.vi_dash_app
@@ -15,19 +16,19 @@ import dash_leaflet as dl
 import geopandas as gpd
 import pandas as pd
 import plotly.graph_objects as go
-from dash import ALL, Input, Output, dcc, html
+from dash import ALL, Input, Output, State, ctx, dcc, html
 
 from engine.vi_analysis.vi_analysis import load_vi_log, _block_colors, _rgb_to_hex
 
 # ---------------------------------------------------------------------------
-# Config — edit these paths before running
+# Config
 # ---------------------------------------------------------------------------
 
 ASSET_DIR = "/Users/daoud/PycharmAssets/shahmeer_farms"
 BOUNDARIES_FILE = f"{ASSET_DIR}/shahmeer_drawn_named.geojson"
 
 ENGINE_DIR = os.path.dirname(__file__)
-_engine_root = os.path.join(ENGINE_DIR, "..")  # engine/
+_engine_root = os.path.join(ENGINE_DIR, "..")
 LOG_FILE = os.path.join(_engine_root, "kharif_shahmeer_field_veg_index_stats.csv")
 BLOCKS_FILE = os.path.join(_engine_root, "shahmeer_blocks.csv")
 
@@ -35,7 +36,7 @@ VI_OPTIONS = ["ndvi", "evi", "ndre"]
 NAME_COL = "Name"
 
 # ---------------------------------------------------------------------------
-# Data loading (once at startup)
+# Data loading
 # ---------------------------------------------------------------------------
 
 boundaries: gpd.GeoDataFrame = gpd.read_file(BOUNDARIES_FILE).to_crs("epsg:4326")
@@ -46,7 +47,6 @@ block_colors: dict = {
     bid: _rgb_to_hex(rgb) for bid, rgb in _block_colors(blocks_df).items()
 }
 
-# Merge boundaries with block info, attach color
 _gdf = boundaries[[NAME_COL, "geometry"]].merge(
     blocks_df, left_on=NAME_COL, right_on="name", how="left"
 )
@@ -56,25 +56,18 @@ _gdf["cluster"] = _gdf["cluster"].fillna(-1).astype(int)
 _gdf = _gdf.rename(columns={NAME_COL: "field_id"})
 
 # ---------------------------------------------------------------------------
-# Build one dl.GeoJSON layer per unique color (no JS style functions needed)
+# Build layer data: one entry per unique color group
 # ---------------------------------------------------------------------------
+# layer_index i  →  (color, fill_opacity, label, geojson_data)
 
-_hover_style = {"weight": 2.5, "color": "white", "fillOpacity": 0.9}
-
-_color_layers = []
+_layers: list[tuple] = []
 for i, (color, group) in enumerate(_gdf.groupby("color")):
     fill_opacity = 0.5 if color == "#555555" else 0.75
-    _color_layers.append(
-        dl.GeoJSON(
-            id={"type": "field-layer", "index": i},
-            data=group.__geo_interface__,
-            style={"fillColor": color, "color": "black", "weight": 0.8,
-                   "fillOpacity": fill_opacity},
-            hoverStyle=_hover_style,
-        )
-    )
+    label = "Unassigned" if color == "#555555" else f"Group {i}"
+    _layers.append((color, fill_opacity, label, group.__geo_interface__))
 
-# Map centre
+_hover_style = {"weight": 2, "color": "white", "fillOpacity": 0.35}
+
 _center = boundaries.geometry.unary_union.centroid
 MAP_CENTER = [_center.y, _center.x]
 
@@ -101,7 +94,16 @@ app.layout = html.Div(
                                 "World_Imagery/MapServer/tile/{z}/{y}/{x}",
                             attribution="Esri World Imagery",
                         ),
-                        *_color_layers,
+                        *[
+                            dl.GeoJSON(
+                                id={"type": "field-layer", "index": i},
+                                data=geojson,
+                                style={"fillColor": color, "color": "black",
+                                       "weight": 0.8, "fillOpacity": fill_opacity},
+                                hoverStyle=_hover_style,
+                            )
+                            for i, (color, fill_opacity, label, geojson) in enumerate(_layers)
+                        ],
                     ],
                 ),
             ],
@@ -125,6 +127,32 @@ app.layout = html.Div(
                     "Click a field on the map to view its vegetation index time series.",
                     style={"color": "#a6adc8", "fontSize": "13px"},
                 ),
+
+                # Layer visibility toggle
+                html.Details(
+                    open=False,
+                    children=[
+                        html.Summary("Layers", style={"cursor": "pointer",
+                                                       "color": "#89b4fa",
+                                                       "fontSize": "13px"}),
+                        dcc.Checklist(
+                            id="layer-toggle",
+                            options=[
+                                {"label": html.Span(
+                                    [
+                                        html.Span("■ ", style={"color": color}),
+                                        label,
+                                    ]
+                                ), "value": i}
+                                for i, (color, _, label, _) in enumerate(_layers)
+                            ],
+                            value=list(range(len(_layers))),
+                            style={"fontSize": "12px", "marginTop": "6px"},
+                        ),
+                    ],
+                    style={"borderTop": "1px solid #313244", "paddingTop": "8px"},
+                ),
+
                 html.Div(id="field-info", style={"fontSize": "13px"}),
                 dcc.Checklist(
                     id="vi-selector",
@@ -159,6 +187,27 @@ def _empty_figure() -> go.Figure:
     return fig
 
 
+# ---------------------------------------------------------------------------
+# Callbacks
+# ---------------------------------------------------------------------------
+
+@app.callback(
+    Output({"type": "field-layer", "index": ALL}, "style"),
+    Input("layer-toggle", "value"),
+)
+def toggle_layers(visible_indices):
+    visible = set(visible_indices or [])
+    styles = []
+    for i, (color, fill_opacity, _, _) in enumerate(_layers):
+        if i in visible:
+            styles.append({"fillColor": color, "color": "black",
+                            "weight": 0.8, "fillOpacity": fill_opacity})
+        else:
+            styles.append({"fillColor": color, "color": "black",
+                            "weight": 0, "fillOpacity": 0})
+    return styles
+
+
 @app.callback(
     Output("field-info", "children"),
     Output("vi-chart", "figure"),
@@ -166,9 +215,10 @@ def _empty_figure() -> go.Figure:
     Input("vi-selector", "value"),
 )
 def on_field_click(all_click_data, selected_vis):
-    # Find the one layer that was actually clicked
-    click_data = next((c for c in all_click_data if c), None)
-    if not click_data:
+    if not ctx.triggered:
+        return "", _empty_figure()
+    click_data = ctx.triggered[0]["value"]
+    if not click_data or not isinstance(click_data, dict):
         return "", _empty_figure()
 
     props = click_data.get("properties", {})
