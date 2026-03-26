@@ -15,7 +15,7 @@ import dash_leaflet as dl
 import geopandas as gpd
 import pandas as pd
 import plotly.graph_objects as go
-from dash import ALL, Input, Output, ctx, dcc, html
+from dash import ALL, Input, Output, State, ctx, dcc, html
 
 from engine.vi_analysis.vi_analysis import load_vi_log, _block_colors, _rgb_to_hex
 
@@ -92,9 +92,12 @@ _TOGGLE_STYLE = {
 
 app = dash.Dash(__name__)
 
+_EMPTY_STORE = {"field_a": None, "field_b": None, "next_slot": "a"}
+
 app.layout = html.Div(
     style={"display": "flex", "height": "100vh", "fontFamily": "sans-serif"},
     children=[
+        dcc.Store(id="compare-store", data=_EMPTY_STORE),
         # ── Left: map ──────────────────────────────────────────────────────
         html.Div(
             style={"flex": "1", "position": "relative"},
@@ -125,6 +128,12 @@ app.layout = html.Div(
                             style={"fillColor": "none", "color": "white",
                                    "weight": 2.5, "fillOpacity": 0},
                         ) if wwf_geojson else None,
+                        dl.GeoJSON(id="highlight-a", data=None,
+                                   style={"fillColor": "none", "color": "red",
+                                          "weight": 2.5, "fillOpacity": 0}),
+                        dl.GeoJSON(id="highlight-b", data=None,
+                                   style={"fillColor": "none", "color": "yellow",
+                                          "weight": 2.5, "fillOpacity": 0}),
                     ],
                 ),
             ],
@@ -156,11 +165,14 @@ app.layout = html.Div(
                                     style=_TOGGLE_STYLE),
                         html.Button("WWF boundaries", id="btn-wwf", n_clicks=0,
                                     style=_TOGGLE_STYLE),
+                        html.Button("Compare", id="btn-compare", n_clicks=0,
+                                    style=_TOGGLE_STYLE),
                     ],
                 ),
 
                 html.P(
-                    "Click a field on the map to view its vegetation index time series.",
+                    id="sidebar-hint",
+                    children="Click a field to view its NDVI time series.",
                     style={"color": "#a6adc8", "fontSize": "13px", "margin": "0"},
                 ),
                 html.Div(id="field-info", style={"fontSize": "13px"}),
@@ -239,69 +251,145 @@ def toggle_wwf(n_clicks):
     return layer_style, btn_style
 
 
-@app.callback(
-    Output("field-info", "children"),
-    Output("vi-chart", "figure"),
-    Input({"type": "field-layer", "index": ALL}, "clickData"),
-)
-def on_field_click(all_click_data):
-    selected_vis = ["ndvi"]
-    if not ctx.triggered:
-        return "", _empty_figure()
-    click_data = ctx.triggered[0]["value"]
-    if not click_data or not isinstance(click_data, dict):
-        return "", _empty_figure()
+def _field_props(field_id: str) -> dict:
+    """Return display properties for a field from the GeoDataFrame."""
+    rows = _gdf[_gdf["field_id"] == field_id]
+    if rows.empty:
+        return {"block_id": "N/A", "cluster": "N/A", "wwf_name": "—"}
+    row = rows.iloc[0]
+    raw_block = row.get("block_id")
+    raw_cluster = row.get("cluster")
+    return {
+        "block_id": "N/A" if pd.isna(raw_block) or int(raw_block) == -1 else int(raw_block),
+        "cluster": "N/A" if pd.isna(raw_cluster) or int(raw_cluster) == -1 else int(raw_cluster),
+        "wwf_name": row.get("wwf_name") or "—",
+    }
 
-    props = click_data.get("properties", {})
-    field_id = props.get("field_id", "")
-    raw_block = props.get("block_id")
-    raw_cluster = props.get("cluster")
-    block_id = "N/A" if raw_block is None or int(raw_block) == -1 else int(raw_block)
-    cluster = "N/A" if raw_cluster is None or int(raw_cluster) == -1 else int(raw_cluster)
-    wwf_name = props.get("wwf_name") or "—"
 
-    info = html.Div([
-        html.Span("Field: ", style={"color": "#a6adc8"}),
+def _field_card(field_id: str, label: str, color: str) -> html.Div:
+    p = _field_props(field_id)
+    return html.Div([
+        html.Span(label, style={"color": color, "fontSize": "11px", "fontWeight": "bold"}),
+        html.Br(),
         html.Strong(field_id, style={"color": "#cdd6f4"}),
         html.Br(),
-        html.Span(f"Block ID {block_id}  ·  Crop ID {cluster}",
+        html.Span(f"Block ID {p['block_id']}  ·  Crop ID {p['cluster']}",
                   style={"color": "#a6adc8", "fontSize": "12px"}),
         html.Br(),
         html.Span("WWF ID: ", style={"color": "#a6adc8", "fontSize": "12px"}),
-        html.Span(wwf_name, style={"color": "#cdd6f4", "fontSize": "12px"}),
-    ])
+        html.Span(p["wwf_name"], style={"color": "#cdd6f4", "fontSize": "12px"}),
+    ], style={"flex": "1", "minWidth": "0"})
 
-    field_data = vi_log[vi_log["name"] == field_id].sort_values("date")
 
-    if field_data.empty:
-        fig = _empty_figure()
-        fig.add_annotation(
-            text="No data for this field",
-            xref="paper", yref="paper", x=0.5, y=0.5,
-            showarrow=False, font={"color": "#a6adc8"},
-        )
-        return info, fig
+def _ndvi_trace(field_id: str, label: str, color: str, dash: str) -> go.Scatter:
+    data = vi_log[vi_log["name"] == field_id].sort_values("date")
+    return go.Scatter(
+        x=pd.to_datetime(data["date"]),
+        y=data["ndvi_mean"],
+        mode="lines+markers",
+        name=f"{label}: {field_id}",
+        line={"color": color, "width": 2, "dash": dash},
+        marker={"size": 4},
+    )
+
+
+@app.callback(
+    Output("compare-store", "data"),
+    Input({"type": "field-layer", "index": ALL}, "clickData"),
+    Input("btn-compare", "n_clicks"),
+    State("compare-store", "data"),
+)
+def update_store(all_click_data, compare_clicks, store):
+    compare_on = (compare_clicks % 2) == 1
+    triggered_id = ctx.triggered_id
+
+    if triggered_id == "btn-compare":
+        # Toggling off: drop field_b and reset slot
+        if not compare_on:
+            return {**store, "field_b": None, "next_slot": "b"}
+        return store
+
+    if not ctx.triggered:
+        return store
+    click_data = ctx.triggered[0]["value"]
+    if not click_data or not isinstance(click_data, dict):
+        return store
+
+    field_id = click_data.get("properties", {}).get("field_id", "")
+    if not field_id:
+        return store
+
+    if not compare_on:
+        return {"field_a": field_id, "field_b": None, "next_slot": "b"}
+
+    if store.get("next_slot", "a") == "a":
+        return {"field_a": field_id, "field_b": store.get("field_b"), "next_slot": "b"}
+    else:
+        return {"field_a": store.get("field_a"), "field_b": field_id, "next_slot": "a"}
+
+
+def _field_geojson(field_id: str):
+    """Return a GeoJSON FeatureCollection for a single field."""
+    if not field_id:
+        return None
+    rows = _gdf[_gdf["field_id"] == field_id]
+    return rows.__geo_interface__ if not rows.empty else None
+
+
+@app.callback(
+    Output("field-info", "children"),
+    Output("vi-chart", "figure"),
+    Output("btn-compare", "style"),
+    Output("sidebar-hint", "children"),
+    Output("highlight-a", "data"),
+    Output("highlight-b", "data"),
+    Input("compare-store", "data"),
+    Input("btn-compare", "n_clicks"),
+)
+def render_selection(store, compare_clicks):
+    compare_on = (compare_clicks % 2) == 1
+    field_a = store.get("field_a")
+    field_b = store.get("field_b")
+
+    btn_style = {**_TOGGLE_STYLE, "background": "#45475a" if compare_on else "#313244"}
+
+    if compare_on:
+        next_slot = store.get("next_slot", "a")
+        hint = f"Click to set Field {'A' if next_slot == 'a' else 'B'}."
+    else:
+        hint = "Click a field to view its NDVI time series."
+
+    if not field_a:
+        return "", _empty_figure(), btn_style, hint, None, None
 
     fig = _empty_figure()
-    dates = pd.to_datetime(field_data["date"])
+    fig.add_trace(_ndvi_trace(field_a, "A", "#a6e3a1", "solid"))
 
-    fig.add_trace(go.Scatter(
-        x=dates,
-        y=field_data["ndvi_mean"],
-        mode="lines+markers",
-        name="NDVI",
-        line={"color": "#a6e3a1", "width": 2},
-        marker={"size": 4},
-    ))
+    if field_b:
+        fig.add_trace(_ndvi_trace(field_b, "B", "#89dceb", "solid"))
 
     fig.update_layout(
         legend={"font": {"size": 11}, "bgcolor": "rgba(0,0,0,0)"},
         xaxis_title="Date",
-        yaxis_title="Index value",
+        yaxis_title="NDVI",
         yaxis={"range": [0, 1], "gridcolor": "#313244"},
     )
 
-    return info, fig
+    if field_b:
+        info = html.Div(
+            style={"display": "flex", "gap": "10px"},
+            children=[
+                _field_card(field_a, "A", "red"),
+                html.Div(style={"width": "1px", "background": "#313244"}),
+                _field_card(field_b, "B", "yellow"),
+            ],
+        )
+    else:
+        info = _field_card(field_a, "A", "red" if compare_on else "#a6e3a1")
+
+    highlight_a = _field_geojson(field_a) if compare_on else None
+    highlight_b = _field_geojson(field_b) if compare_on else None
+    return info, fig, btn_style, hint, highlight_a, highlight_b
 
 
 # ---------------------------------------------------------------------------
