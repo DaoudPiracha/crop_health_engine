@@ -317,39 +317,48 @@ def _block_colors(blocks_df: pd.DataFrame, saturation: float = 0.45,
 
 
 def plot_block_map(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataFrame,
-                   name_col: str = "Name") -> None:
+                   name_col: str = "Name",
+                   overlay: gpd.GeoDataFrame = None) -> None:
     """
     Plot individual field polygons coloured by block.
 
     Colour hue family = cluster (so same-cluster fields share a visual family),
     slight hue variation per block within a cluster. Muted saturation and fixed
     brightness keep the palette easy on the eye.
+
+    Parameters
+    ----------
+    overlay : optional GeoDataFrame whose boundaries are drawn on top in red
     """
     block_colors = _block_colors(blocks_df)
 
     gdf = boundaries[[name_col, "geometry"]].merge(blocks_df, left_on=name_col, right_on="name")
     gdf["color"] = gdf["block_id"].map(block_colors)
 
+    # Fields that were filtered out (high std) — not in blocks_df
+    unassigned = boundaries[~boundaries[name_col].isin(blocks_df["name"])]
+
     fig, ax = plt.subplots(figsize=(10, 10))
 
-    # Individual fields — fill with block color, light internal edges
+    # Draw unassigned fields first (behind) in grey
+    if not unassigned.empty:
+        unassigned.plot(ax=ax, color="#555555", edgecolor="black", linewidth=0.5, alpha=0.5)
+
     for _, row in gdf.iterrows():
         gpd.GeoDataFrame([row], crs=boundaries.crs).plot(
-            ax=ax, color=[row["color"]], edgecolor="white", linewidth=0.3, alpha=0.9
+            ax=ax, color=[row["color"]], edgecolor="black", linewidth=0.5
         )
 
-    # Block outlines — dissolve fields per block, draw bold outer border only
-    dissolved = gdf[["block_id", "geometry"]].dissolve(by="block_id")
-    dissolved["geometry"] = dissolved.geometry.boundary
-    dissolved.plot(ax=ax, color="black", linewidth=1.8)
-
-    # Label each block once at its centroid
+    # Label each block once at its dissolved centroid
     for bid, group in gdf.groupby("block_id"):
         centroid = group.geometry.unary_union.centroid
         ax.annotate(str(bid), (centroid.x, centroid.y), fontsize=6, ha="center",
                     color="black", fontweight="bold")
 
-    ax.set_title("Fields coloured by block (hue family = cluster)")
+    if overlay is not None:
+        overlay.to_crs(boundaries.crs).boundary.plot(ax=ax, edgecolor="black", linewidth=2.5)
+
+    ax.set_title("Fields coloured by AI crop similarity")
     plt.tight_layout()
     plt.show()
 
@@ -373,10 +382,20 @@ if __name__ == "__main__":
     asset_dir = "/Users/daoud/PycharmAssets/shahmeer_farms"
     boundaries_file = f"{asset_dir}/shahmeer_drawn_named.geojson"
 
+    geo_file = f"./shahmeer_wwf_map.geojson"
+    wwf_map = None
+    if os.path.exists(geo_file):
+        wwf_map = gpd.read_file(geo_file)
+        wwf_map.boundary.plot(edgecolor="red", linewidth=0.5)
+        plt.title("shahmeer wwf map")
+        plt.show()
+
     if not os.path.exists(boundaries_file):
         raise ValueError(f"Boundaries file not found: {boundaries_file}")
     boundaries = gpd.read_file(boundaries_file)
     boundaries.boundary.plot()
+    plt.title("shahmeer AI generated field map")
+
     plt.show()
 
     ndvi_log = load_vi_log(log_file)
@@ -397,7 +416,7 @@ if __name__ == "__main__":
     blocks_df.to_csv(f"{crop_id}_blocks.csv", index=False)
     print(f"Field→block mapping written to {crop_id}_blocks.csv")
 
-    plot_block_map(boundaries, blocks_df)
+    plot_block_map(boundaries, blocks_df, overlay=wwf_map)
 
     for veg_idx in veg_indices:
         print(f"\n--- {veg_idx} ---")
