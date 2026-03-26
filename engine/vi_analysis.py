@@ -331,12 +331,19 @@ def plot_block_map(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataFrame,
     gdf["color"] = gdf["block_id"].map(block_colors)
 
     fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Individual fields — fill with block color, light internal edges
     for _, row in gdf.iterrows():
         gpd.GeoDataFrame([row], crs=boundaries.crs).plot(
-            ax=ax, color=[row["color"]], edgecolor="black", linewidth=0.5
+            ax=ax, color=[row["color"]], edgecolor="white", linewidth=0.3, alpha=0.9
         )
 
-    # Label each block once at its dissolved centroid
+    # Block outlines — dissolve fields per block, draw bold outer border only
+    dissolved = gdf[["block_id", "geometry"]].dissolve(by="block_id")
+    dissolved["geometry"] = dissolved.geometry.boundary
+    dissolved.plot(ax=ax, color="black", linewidth=1.8)
+
+    # Label each block once at its centroid
     for bid, group in gdf.groupby("block_id"):
         centroid = group.geometry.unary_union.centroid
         ax.annotate(str(bid), (centroid.x, centroid.y), fontsize=6, ha="center",
