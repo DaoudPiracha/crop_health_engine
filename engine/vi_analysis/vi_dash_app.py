@@ -2,8 +2,7 @@
 vi_dash_app.py — Interactive Dash app for VI time-series exploration.
 
 Click any field polygon on the map to display its NDVI / EVI / NDRE
-time series in the sidebar. Use the Layers toggle in the sidebar to
-show/hide color groups.
+time series in the sidebar.
 
 Usage:
     python -m engine.vi_analysis.vi_dash_app
@@ -16,7 +15,7 @@ import dash_leaflet as dl
 import geopandas as gpd
 import pandas as pd
 import plotly.graph_objects as go
-from dash import ALL, Input, Output, State, ctx, dcc, html
+from dash import ALL, Input, Output, ctx, dcc, html
 
 from engine.vi_analysis.vi_analysis import load_vi_log, _block_colors, _rgb_to_hex
 
@@ -31,6 +30,7 @@ ENGINE_DIR = os.path.dirname(__file__)
 _engine_root = os.path.join(ENGINE_DIR, "..")
 LOG_FILE = os.path.join(_engine_root, "kharif_shahmeer_field_veg_index_stats.csv")
 BLOCKS_FILE = os.path.join(_engine_root, "shahmeer_blocks.csv")
+WWF_FILE = os.path.join(_engine_root, "shahmeer_wwf_map.geojson")
 
 VI_OPTIONS = ["ndvi", "evi", "ndre"]
 NAME_COL = "Name"
@@ -50,23 +50,32 @@ block_colors: dict = {
 _gdf = boundaries[[NAME_COL, "geometry"]].merge(
     blocks_df, left_on=NAME_COL, right_on="name", how="left"
 )
-_gdf["color"] = _gdf["block_id"].map(block_colors).fillna("#555555")
+_gdf["color"] = _gdf["block_id"].map(block_colors).fillna("#bbbbbb")
 _gdf["block_id"] = _gdf["block_id"].fillna(-1).astype(int)
 _gdf["cluster"] = _gdf["cluster"].fillna(-1).astype(int)
 _gdf = _gdf.rename(columns={NAME_COL: "field_id"})
 
+wwf_geojson = None
+wwf_gdf = None
+if os.path.exists(WWF_FILE):
+    wwf_gdf = gpd.read_file(WWF_FILE).to_crs("epsg:4326")
+    wwf_geojson = wwf_gdf.__geo_interface__
+    # Spatial join: attach WWF name to each field
+    _joined = gpd.sjoin(_gdf, wwf_gdf[["Name", "geometry"]], how="left", predicate="intersects")
+    _joined = _joined[~_joined.index.duplicated(keep="first")]
+    _gdf["wwf_name"] = _joined["Name"]
+else:
+    _gdf["wwf_name"] = None
+
 # ---------------------------------------------------------------------------
-# Build layer data: one entry per unique color group
+# Layer data: one entry per unique color group
 # ---------------------------------------------------------------------------
-# layer_index i  →  (color, fill_opacity, label, geojson_data)
 
 _layers: list[tuple] = []
 for i, (color, group) in enumerate(_gdf.groupby("color")):
-    fill_opacity = 0.5 if color == "#555555" else 0.75
-    label = "Unassigned" if color == "#555555" else f"Group {i}"
-    _layers.append((color, fill_opacity, label, group.__geo_interface__))
+    fill_opacity = 0.5 if color == "#bbbbbb" else 0.75
+    _layers.append((color, fill_opacity, group.__geo_interface__))
 
-_hover_style = {"weight": 2, "color": "white", "fillOpacity": 0.35}
 
 _center = boundaries.geometry.unary_union.centroid
 MAP_CENTER = [_center.y, _center.x]
@@ -74,6 +83,12 @@ MAP_CENTER = [_center.y, _center.x]
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
+
+_TOGGLE_STYLE = {
+    "fontSize": "12px", "background": "#313244", "color": "#cdd6f4",
+    "border": "none", "borderRadius": "4px", "padding": "4px 10px",
+    "cursor": "pointer", "textAlign": "left",
+}
 
 app = dash.Dash(__name__)
 
@@ -100,10 +115,16 @@ app.layout = html.Div(
                                 data=geojson,
                                 style={"fillColor": color, "color": "black",
                                        "weight": 0.8, "fillOpacity": fill_opacity},
-                                hoverStyle=_hover_style,
+                                hoverStyle={"weight": 2, "color": "white", "fillOpacity": 0},
                             )
-                            for i, (color, fill_opacity, label, geojson) in enumerate(_layers)
+                            for i, (color, fill_opacity, geojson) in enumerate(_layers)
                         ],
+                        dl.GeoJSON(
+                            id="wwf-layer",
+                            data=wwf_geojson,
+                            style={"fillColor": "none", "color": "white",
+                                   "weight": 2.5, "fillOpacity": 0},
+                        ) if wwf_geojson else None,
                     ],
                 ),
             ],
@@ -123,36 +144,25 @@ app.layout = html.Div(
             },
             children=[
                 html.H3("VI Analysis", style={"margin": "0", "color": "#cba6f7"}),
+
+                # Layer toggles
+                html.Div(
+                    style={"display": "flex", "gap": "8px",
+                           "borderBottom": "1px solid #313244", "paddingBottom": "10px"},
+                    children=[
+                        html.Button("Fields", id="btn-fields", n_clicks=0,
+                                    style={**_TOGGLE_STYLE, "background": "#45475a"}),
+                        html.Button("Outlines only", id="btn-outlines", n_clicks=0,
+                                    style=_TOGGLE_STYLE),
+                        html.Button("WWF boundaries", id="btn-wwf", n_clicks=0,
+                                    style=_TOGGLE_STYLE),
+                    ],
+                ),
+
                 html.P(
                     "Click a field on the map to view its vegetation index time series.",
-                    style={"color": "#a6adc8", "fontSize": "13px"},
+                    style={"color": "#a6adc8", "fontSize": "13px", "margin": "0"},
                 ),
-
-                # Layer visibility toggle
-                html.Details(
-                    open=False,
-                    children=[
-                        html.Summary("Layers", style={"cursor": "pointer",
-                                                       "color": "#89b4fa",
-                                                       "fontSize": "13px"}),
-                        dcc.Checklist(
-                            id="layer-toggle",
-                            options=[
-                                {"label": html.Span(
-                                    [
-                                        html.Span("■ ", style={"color": color}),
-                                        label,
-                                    ]
-                                ), "value": i}
-                                for i, (color, _, label, _) in enumerate(_layers)
-                            ],
-                            value=list(range(len(_layers))),
-                            style={"fontSize": "12px", "marginTop": "6px"},
-                        ),
-                    ],
-                    style={"borderTop": "1px solid #313244", "paddingTop": "8px"},
-                ),
-
                 html.Div(id="field-info", style={"fontSize": "13px"}),
                 dcc.Checklist(
                     id="vi-selector",
@@ -193,19 +203,49 @@ def _empty_figure() -> go.Figure:
 
 @app.callback(
     Output({"type": "field-layer", "index": ALL}, "style"),
-    Input("layer-toggle", "value"),
+    Output({"type": "field-layer", "index": ALL}, "hoverStyle"),
+    Output("btn-fields", "style"),
+    Output("btn-outlines", "style"),
+    Input("btn-fields", "n_clicks"),
+    Input("btn-outlines", "n_clicks"),
 )
-def toggle_layers(visible_indices):
-    visible = set(visible_indices or [])
+def toggle_fields(fields_clicks, outlines_clicks):
+    fields_on = (fields_clicks % 2) == 0
+    outlines_on = (outlines_clicks % 2) == 1
+
+    hover = {"weight": 2, "color": "red" if outlines_on else "white", "fillOpacity": 0}
+
     styles = []
-    for i, (color, fill_opacity, _, _) in enumerate(_layers):
-        if i in visible:
-            styles.append({"fillColor": color, "color": "black",
-                            "weight": 0.8, "fillOpacity": fill_opacity})
-        else:
+    for color, fill_opacity, _ in _layers:
+        if not fields_on:
             styles.append({"fillColor": color, "color": "black",
                             "weight": 0, "fillOpacity": 0})
-    return styles
+        elif outlines_on:
+            styles.append({"fillColor": color, "color": "white",
+                            "weight": 1, "fillOpacity": 0})
+        else:
+            styles.append({"fillColor": color, "color": "black",
+                            "weight": 0.8, "fillOpacity": fill_opacity})
+
+    btn_fields_style = {**_TOGGLE_STYLE,
+                        "background": "#45475a" if fields_on else "#313244"}
+    btn_outlines_style = {**_TOGGLE_STYLE,
+                          "background": "#45475a" if outlines_on else "#313244"}
+    return styles, [hover] * len(_layers), btn_fields_style, btn_outlines_style
+
+
+@app.callback(
+    Output("wwf-layer", "style"),
+    Output("btn-wwf", "style"),
+    Input("btn-wwf", "n_clicks"),
+)
+def toggle_wwf(n_clicks):
+    wwf_visible = (n_clicks % 2) == 1
+    layer_style = {"fillColor": "none", "color": "white",
+                   "weight": 2.5 if wwf_visible else 0, "fillOpacity": 0}
+    btn_style = {**_TOGGLE_STYLE,
+                 "background": "#45475a" if wwf_visible else "#313244"}
+    return layer_style, btn_style
 
 
 @app.callback(
@@ -223,15 +263,21 @@ def on_field_click(all_click_data, selected_vis):
 
     props = click_data.get("properties", {})
     field_id = props.get("field_id", "")
-    block_id = props.get("block_id", "—")
-    cluster = props.get("cluster", "—")
+    raw_block = props.get("block_id")
+    raw_cluster = props.get("cluster")
+    block_id = "N/A" if raw_block is None or int(raw_block) == -1 else int(raw_block)
+    cluster = "N/A" if raw_cluster is None or int(raw_cluster) == -1 else int(raw_cluster)
+    wwf_name = props.get("wwf_name") or "—"
 
     info = html.Div([
         html.Span("Field: ", style={"color": "#a6adc8"}),
         html.Strong(field_id, style={"color": "#cdd6f4"}),
         html.Br(),
-        html.Span(f"Block {block_id}  ·  Cluster {cluster}",
+        html.Span(f"Block ID {block_id}  ·  Crop ID {cluster}",
                   style={"color": "#a6adc8", "fontSize": "12px"}),
+        html.Br(),
+        html.Span("WWF ID: ", style={"color": "#a6adc8", "fontSize": "12px"}),
+        html.Span(wwf_name, style={"color": "#cdd6f4", "fontSize": "12px"}),
     ])
 
     field_data = vi_log[vi_log["name"] == field_id].sort_values("date")
