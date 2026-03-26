@@ -32,7 +32,7 @@ LOG_FILE = os.path.join(_engine_root, "kharif_shahmeer_field_veg_index_stats.csv
 BLOCKS_FILE = os.path.join(_engine_root, "shahmeer_blocks.csv")
 WWF_FILE = os.path.join(_engine_root, "shahmeer_wwf_map.geojson")
 
-VI_OPTIONS = ["ndvi", "evi", "ndre"]
+VI_OPTIONS = ["ndvi"]
 NAME_COL = "Name"
 
 # ---------------------------------------------------------------------------
@@ -164,15 +164,6 @@ app.layout = html.Div(
                     style={"color": "#a6adc8", "fontSize": "13px", "margin": "0"},
                 ),
                 html.Div(id="field-info", style={"fontSize": "13px"}),
-                dcc.Checklist(
-                    id="vi-selector",
-                    options=[{"label": vi.upper(), "value": vi} for vi in VI_OPTIONS],
-                    value=["ndvi"],
-                    inline=True,
-                    inputStyle={"marginRight": "4px"},
-                    labelStyle={"marginRight": "12px"},
-                    style={"fontSize": "13px"},
-                ),
                 dcc.Graph(
                     id="vi-chart",
                     config={"displayModeBar": False},
@@ -252,9 +243,9 @@ def toggle_wwf(n_clicks):
     Output("field-info", "children"),
     Output("vi-chart", "figure"),
     Input({"type": "field-layer", "index": ALL}, "clickData"),
-    Input("vi-selector", "value"),
 )
-def on_field_click(all_click_data, selected_vis):
+def on_field_click(all_click_data):
+    selected_vis = ["ndvi"]
     if not ctx.triggered:
         return "", _empty_figure()
     click_data = ctx.triggered[0]["value"]
@@ -291,22 +282,17 @@ def on_field_click(all_click_data, selected_vis):
         )
         return info, fig
 
-    _VI_COLORS = {"ndvi": "#a6e3a1", "evi": "#89b4fa", "ndre": "#fab387"}
     fig = _empty_figure()
     dates = pd.to_datetime(field_data["date"])
 
-    for vi in (selected_vis or []):
-        col = f"{vi}_mean"
-        if col not in field_data.columns:
-            continue
-        fig.add_trace(go.Scatter(
-            x=dates,
-            y=field_data[col],
-            mode="lines+markers",
-            name=vi.upper(),
-            line={"color": _VI_COLORS.get(vi, "#cdd6f4"), "width": 2},
-            marker={"size": 4},
-        ))
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=field_data["ndvi_mean"],
+        mode="lines+markers",
+        name="NDVI",
+        line={"color": "#a6e3a1", "width": 2},
+        marker={"size": 4},
+    ))
 
     fig.update_layout(
         legend={"font": {"size": 11}, "bgcolor": "rgba(0,0,0,0)"},
