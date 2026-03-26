@@ -54,7 +54,13 @@ def cluster_time_series_and_plot(time_series_df, n_clusters=6, use_pca=False, n_
 from tslearn.clustering import KShape
 from tslearn.preprocessing import TimeSeriesScalerMeanVariance
 
-def kshape_cluster_time_series(time_series_df, n_clusters=6):
+from tslearn.clustering import KShape
+from tslearn.preprocessing import TimeSeriesScalerMeanVariance
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+def kshape_cluster_time_series(time_series_df, n_clusters=6, reference_curve=None):
     """
     Cluster fields based on their full vegetation index time series using k-Shape.
 
@@ -65,6 +71,8 @@ def kshape_cluster_time_series(time_series_df, n_clusters=6):
         columns = fields
     n_clusters : int
         Number of clusters
+    reference_curve : array-like, optional
+        A reference curve (e.g., corn NDVI) to plot for comparison
     """
 
     # Convert to (fields, time_steps, 1) for tslearn
@@ -88,14 +96,36 @@ def kshape_cluster_time_series(time_series_df, n_clusters=6):
         print(f"Cluster {cluster_id}: {len(fields_in_cluster)} fields")
 
         plt.figure(figsize=(8,5))
+        # Individual fields
         cluster_df.plot(ax=plt.gca(), legend=False, alpha=0.15, color="blue")
+        # Cluster mean
         cluster_df.mean(axis=1).plot(ax=plt.gca(), color="red", linewidth=3)
+        # Reference curve if provided
+        if reference_curve is not None:
+            ref_curve = pd.Series(reference_curve, index=time_series_df.index)
+            ref_curve.plot(ax=plt.gca(), color="green", linestyle="--", linewidth=2, label="Corn reference")
+            plt.legend()
+
         plt.title(f"k-Shape Cluster {cluster_id}")
         plt.xlabel("Date")
         plt.ylabel("Vegetation Index")
         plt.show()
 
     return clusters
+
+# Example NDVI curve for corn
+corn_reference = [0.2, 0.2, 0.4, 0.6, 0.8, 0.75, 0.5, 0.3, 0.2]
+corn_reference = [0.2] * 2 + corn_reference[:-2]
+x_orig = np.linspace(0, 1, len(corn_reference))
+x_orig = np.linspace(0, 1, len(corn_reference))
+
+# Create target x-axis for 36 points
+x_new = np.linspace(0, 1, 36)
+
+# Interpolate
+corn_interp = np.interp(x_new, x_orig, corn_reference)
+
+
 
 if __name__ == '__main__':
     season = 'kharif'
@@ -125,7 +155,7 @@ if __name__ == '__main__':
     ndvi_log = ndvi_log[~ndvi_log.index.isin(duplicate_groups.index)]
 
     veg_idx = 'ndre'
-    veg_idx_n = ['ndvi', 'cire', 'evi', 'ndre']
+    veg_idx_n = ['ndvi', 'evi', 'ndre']
     for plot_idx, veg_idx_i in enumerate(veg_idx_n):
         ndvi_log_clean = ndvi_log[~ndvi_log['ndvi_mean'].isna()]
         # ndvi_log_clean = ndvi_log_clean[ndvi_log_clean['ndvi_mean']< 1]
@@ -150,20 +180,18 @@ if __name__ == '__main__':
         time_series_df = time_series_df.fillna(method='bfill').fillna(method='ffill')
 
         # clusters = cluster_time_series_and_plot(time_series_df, use_pca=False, n_clusters=20)
-        clusters = kshape_cluster_time_series(time_series_df, n_clusters=7)
-
+        clusters = kshape_cluster_time_series(time_series_df, n_clusters=6, reference_curve=corn_interp)
         clusters_df = clusters.reset_index()
         clusters_df.columns = ["name", "cluster"]
         boundaries_clustered = pd.merge(boundaries, clusters_df, left_on='Name', right_on='name')
 
-        clusters_to_keep = [2]
+        clusters_to_keep = [0, 5, 6]
 
         # boundaries_clustered = boundaries_clustered[boundaries_clustered['cluster'].isin(clusters_to_keep)]
         boundaries_clustered.plot(
             column="cluster",
             cmap="tab10",
             legend=True,
-            edgecolor="black"
         )
 
         plt.title("Field Clusters")
