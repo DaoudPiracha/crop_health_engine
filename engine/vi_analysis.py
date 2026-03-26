@@ -316,6 +316,82 @@ def _block_colors(blocks_df: pd.DataFrame, saturation: float = 0.45,
     return colors
 
 
+def _rgb_to_hex(rgb: tuple) -> str:
+    return "#{:02x}{:02x}{:02x}".format(int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255))
+
+
+def plot_block_map_interactive(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataFrame,
+                                name_col: str = "Name",
+                                overlay: gpd.GeoDataFrame = None,
+                                overlay_name_col: str = "Name"):
+    """
+    Interactive version of plot_block_map using leafmap with a basemap.
+
+    If overlay is provided, each field is spatially joined to the overlay so
+    that clicking/hovering on a field shows the corresponding overlay polygon
+    name (e.g. WWF block name) in the popup.
+
+    Returns the leafmap.Map object so it can be displayed in a notebook
+    or saved with m.to_html().
+    """
+    import leafmap.foliumap as leafmap
+
+    block_colors = {bid: _rgb_to_hex(rgb) for bid, rgb in _block_colors(blocks_df).items()}
+
+    gdf = boundaries[[name_col, "geometry"]].merge(blocks_df, left_on=name_col, right_on="name")
+    gdf["color"] = gdf["block_id"].map(block_colors)
+    gdf = gdf.to_crs("epsg:4326")
+
+    # Spatially join WWF names onto fields so they appear in popups
+    if overlay is not None and overlay_name_col in overlay.columns:
+        wwf = overlay[[overlay_name_col, "geometry"]].to_crs("epsg:4326")
+        joined = gpd.sjoin(gdf, wwf, how="left", predicate="intersects")
+        # If a field touches multiple WWF polygons take the first match
+        joined = joined[~joined.index.duplicated(keep="first")]
+        joined = joined.rename(columns={overlay_name_col: "wwf_name"})
+        gdf = joined.drop(columns=["index_right"], errors="ignore")
+    else:
+        gdf["wwf_name"] = None
+
+    unassigned = boundaries[~boundaries[name_col].isin(blocks_df["name"])].copy()
+    unassigned = unassigned.to_crs("epsg:4326")
+
+    center = gdf.geometry.unary_union.centroid
+    m = leafmap.Map(center=[center.y, center.x], zoom=14)
+    m.add_basemap("SATELLITE")
+
+    if not unassigned.empty:
+        m.add_gdf(
+            unassigned,
+            style_function=lambda _: {
+                "fillColor": "#555555", "color": "black",
+                "weight": 0.5, "fillOpacity": 0.5,
+            },
+            layer_name="Unassigned fields",
+        )
+
+    m.add_gdf(
+        gdf,
+        style_function=lambda f: {
+            "fillColor": f["properties"]["color"], "color": "black",
+            "weight": 0.5, "fillOpacity": 0.8,
+        },
+        layer_name="Blocks",
+    )
+
+    if overlay is not None:
+        m.add_gdf(
+            overlay.to_crs("epsg:4326"),
+            style_function=lambda _: {
+                "fillColor": "none", "color": "black",
+                "weight": 2.5, "fillOpacity": 0,
+            },
+            layer_name="WWF map",
+        )
+
+    return m
+
+
 def plot_block_map(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataFrame,
                    name_col: str = "Name",
                    overlay: gpd.GeoDataFrame = None) -> None:
@@ -418,6 +494,11 @@ if __name__ == "__main__":
 
     plot_block_map(boundaries, blocks_df, overlay=wwf_map)
 
+    m = plot_block_map_interactive(boundaries, blocks_df, overlay=wwf_map)
+    m.to_html(f"{crop_id}_block_map.html")
+    print(f"Interactive map saved to {crop_id}_block_map.html")
+
+    assert False
     for veg_idx in veg_indices:
         print(f"\n--- {veg_idx} ---")
         ts = build_time_series(ndvi_log, veg_idx, std_threshold=std_threshold)
