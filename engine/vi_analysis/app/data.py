@@ -7,7 +7,7 @@ singleton is created at import time for use by the Dash app.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import NamedTuple
 
 import geopandas as gpd
@@ -57,6 +57,14 @@ class AppData:
 # ---------------------------------------------------------------------------
 
 def load_data() -> AppData:
+    for path, label in [
+        (BOUNDARIES_FILE, "boundaries GeoJSON"),
+        (BLOCKS_FILE,     "blocks CSV"),
+        (LOG_FILE,        "VI log CSV"),
+    ]:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Missing {label}: {path}")
+
     boundaries = gpd.read_file(BOUNDARIES_FILE).to_crs("epsg:4326")
     blocks_df  = pd.read_csv(BLOCKS_FILE)
     vi_log     = load_vi_log(LOG_FILE)

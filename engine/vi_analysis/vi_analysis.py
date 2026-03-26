@@ -336,10 +336,10 @@ def plot_block_map_interactive(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataF
     """
     import leafmap.foliumap as leafmap
 
-    block_colors = {bid: rgb_to_hex(rgb) for bid, rgb in block_colors(blocks_df).items()}
+    color_map = {bid: rgb_to_hex(rgb) for bid, rgb in block_colors(blocks_df).items()}
 
     gdf = boundaries[[name_col, "geometry"]].merge(blocks_df, left_on=name_col, right_on="name")
-    gdf["color"] = gdf["block_id"].map(block_colors)
+    gdf["color"] = gdf["block_id"].map(color_map)
     gdf = gdf.to_crs("epsg:4326")
 
     # Spatially join WWF names onto fields so they appear in popups
@@ -408,10 +408,10 @@ def plot_block_map(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataFrame,
     ----------
     overlay : optional GeoDataFrame whose boundaries are drawn on top in red
     """
-    block_colors = block_colors(blocks_df)
+    color_map = block_colors(blocks_df)
 
     gdf = boundaries[[name_col, "geometry"]].merge(blocks_df, left_on=name_col, right_on="name")
-    gdf["color"] = gdf["block_id"].map(block_colors)
+    gdf["color"] = gdf["block_id"].map(color_map)
 
     # Fields that were filtered out (high std) — not in blocks_df
     unassigned = boundaries[~boundaries[name_col].isin(blocks_df["name"])]
@@ -448,7 +448,7 @@ def plot_block_map(boundaries: gpd.GeoDataFrame, blocks_df: pd.DataFrame,
 if __name__ == "__main__":
     season = "kharif"
     crop_id = "shahmeer"
-    log_file = f"{season}_{crop_id}_field_veg_index_stats.csv"
+    log_file = f"../{season}_{crop_id}_field_veg_index_stats.csv"
     show_z_plots = False
     n_clusters = 6
     clusters_to_keep = [0, 5]           # set to None to keep all clusters

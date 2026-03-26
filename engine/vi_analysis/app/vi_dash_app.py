@@ -146,8 +146,10 @@ def _field_card(field_id: str, label: str, label_color: str) -> html.Div:
     ])
 
 
-def _ndvi_trace(field_id: str, label: str, color: str) -> go.Scatter:
+def _ndvi_trace(field_id: str, label: str, color: str) -> go.Scatter | None:
     data = _vi_log[_vi_log["name"] == field_id].sort_values("date")
+    if data.empty:
+        return None
     return go.Scatter(
         x=pd.to_datetime(data["date"]),
         y=data["ndvi_mean"],
@@ -193,18 +195,26 @@ def toggle_fields(fields_clicks, outlines_clicks):
     )
 
 
-@app.callback(
-    Output("wwf-layer", "style"),
-    Output("btn-wwf", "style"),
-    Input("btn-wwf", "n_clicks"),
-)
-def toggle_wwf(n_clicks):
-    visible = (n_clicks % 2) == 1
-    return (
-        {"fillColor": "none", "color": "white",
-         "weight": 2.5 if visible else 0, "fillOpacity": 0},
-        TOGGLE_STYLE_ON if visible else TOGGLE_STYLE,
+if _wwf_geojson:
+    @app.callback(
+        Output("wwf-layer", "style"),
+        Output("btn-wwf", "style"),
+        Input("btn-wwf", "n_clicks"),
     )
+    def toggle_wwf(n_clicks):
+        visible = (n_clicks % 2) == 1
+        return (
+            {"fillColor": "none", "color": "white",
+             "weight": 2.5 if visible else 0, "fillOpacity": 0},
+            TOGGLE_STYLE_ON if visible else TOGGLE_STYLE,
+        )
+else:
+    @app.callback(
+        Output("btn-wwf", "style"),
+        Input("btn-wwf", "n_clicks"),
+    )
+    def toggle_wwf(_):
+        return {**TOGGLE_STYLE, "opacity": "0.4", "cursor": "not-allowed"}
 
 
 @app.callback(
@@ -263,9 +273,19 @@ def render_selection(store):
         return "", empty_figure(), TOGGLE_STYLE_ON if compare_on else TOGGLE_STYLE, hint, None, None
 
     fig = empty_figure()
-    fig.add_trace(_ndvi_trace(field_a, "A", TRACE_COLOR_A))
-    if field_b:
-        fig.add_trace(_ndvi_trace(field_b, "B", TRACE_COLOR_B))
+    trace_a = _ndvi_trace(field_a, "A", TRACE_COLOR_A)
+    trace_b = _ndvi_trace(field_b, "B", TRACE_COLOR_B) if field_b else None
+
+    if trace_a:
+        fig.add_trace(trace_a)
+    else:
+        fig.add_annotation(text=f"No data for {field_a}", xref="paper", yref="paper",
+                           x=0.5, y=0.5, showarrow=False, font={"color": COLOR_MUTED})
+    if trace_b:
+        fig.add_trace(trace_b)
+    elif field_b:
+        fig.add_annotation(text=f"No data for {field_b}", xref="paper", yref="paper",
+                           x=0.5, y=0.3, showarrow=False, font={"color": COLOR_MUTED})
     fig.update_layout(
         legend={"font": {"size": 11}, "bgcolor": "rgba(0,0,0,0)"},
         xaxis_title="Date",
