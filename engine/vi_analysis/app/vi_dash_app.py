@@ -142,7 +142,7 @@ def _map_panel() -> html.Div:
                     dl.GeoJSON(id="highlight-b", data=None,
                                style={"fillColor": "none", "color": HIGHLIGHT_COLOR_B,
                                       "weight": 2.5, "fillOpacity": 0}),
-                    *_whatsapp_markers(),
+                    dl.LayerGroup(id="markers-layer", children=_whatsapp_markers()),
                 ],
             ),
         ],
@@ -159,7 +159,7 @@ def _sidebar() -> html.Div:
         children=[
             html.H3("VI Analysis", style={"margin": "0", "color": COLOR_HEADING}),
             html.Div(
-                style={"display": "flex", "gap": "8px",
+                style={"display": "flex", "flexWrap": "wrap", "gap": "8px",
                        "borderBottom": f"1px solid {COLOR_DIVIDER}",
                        "paddingBottom": "10px"},
                 children=[
@@ -168,6 +168,7 @@ def _sidebar() -> html.Div:
                     html.Button("Z-Score",        id="btn-zscore",   n_clicks=0,
                                 style=TOGGLE_STYLE if _z_score_layers else {**TOGGLE_STYLE, "opacity": "0.4", "cursor": "not-allowed"}),
                     html.Button("WWF boundaries", id="btn-wwf",      n_clicks=0, style=TOGGLE_STYLE),
+                    html.Button("Markers",        id="btn-markers",  n_clicks=0, style=TOGGLE_STYLE),
                     html.Button("Compare",        id="btn-compare",  n_clicks=0, style=TOGGLE_STYLE),
                 ],
             ),
@@ -313,6 +314,19 @@ else:
     )
     def toggle_wwf(_):
         return {**TOGGLE_STYLE, "opacity": "0.4", "cursor": "not-allowed"}
+
+
+@app.callback(
+    Output("markers-layer", "children"),
+    Output("btn-markers", "style"),
+    Input("btn-markers", "n_clicks"),
+)
+def toggle_markers(n_clicks):
+    visible = (n_clicks % 2) == 1
+    return (
+        _whatsapp_markers() if visible else [],
+        TOGGLE_STYLE_ON if visible else TOGGLE_STYLE,
+    )
 
 
 @app.callback(
