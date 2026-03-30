@@ -9,6 +9,7 @@ Usage:
 """
 from __future__ import annotations
 
+import re
 import dash
 import dash_leaflet as dl
 import pandas as pd
@@ -29,9 +30,46 @@ _vi_log            = app_data.vi_log
 _layers            = app_data.layers
 _z_score_layers    = app_data.z_score_layers
 _wwf_geojson       = app_data.wwf_geojson
+_markers_geojson   = app_data.markers_geojson
 _map_center        = app_data.map_center
 _field_props_map   = app_data.field_props_map
 _field_geojson_map = app_data.field_geojson_map
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _whatsapp_markers() -> list:
+    """Build dl.Marker components from the WhatsApp markers GeoJSON."""
+    if not _markers_geojson:
+        return []
+    markers = []
+    for feat in _markers_geojson.get("features", []):
+        coords = feat["geometry"]["coordinates"]  # [lon, lat, ...]
+        props  = feat.get("properties", {})
+        name   = props.get("Name") or ""
+        desc   = props.get("description")
+
+        popup_children = [html.Strong(name, style={"fontSize": "13px"})]
+        if desc:
+            plain_desc = re.sub(r"<[^>]+>", " ", desc).strip()
+            plain_desc = re.sub(r"\s{2,}", " ", plain_desc)
+            popup_children += [
+                html.Hr(style={"margin": "4px 0"}),
+                html.Span(plain_desc, style={"fontSize": "12px"}),
+            ]
+
+        markers.append(
+            dl.Marker(
+                position=[coords[1], coords[0]],
+                children=[
+                    dl.Tooltip(name, sticky=True),
+                    dl.Popup(children=popup_children, maxWidth=300),
+                ],
+            )
+        )
+    return markers
+
 
 # ---------------------------------------------------------------------------
 # App
@@ -104,6 +142,7 @@ def _map_panel() -> html.Div:
                     dl.GeoJSON(id="highlight-b", data=None,
                                style={"fillColor": "none", "color": HIGHLIGHT_COLOR_B,
                                       "weight": 2.5, "fillOpacity": 0}),
+                    *_whatsapp_markers(),
                 ],
             ),
         ],

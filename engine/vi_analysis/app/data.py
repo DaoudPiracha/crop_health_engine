@@ -6,6 +6,7 @@ singleton is created at import time for use by the Dash app.
 """
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -28,6 +29,7 @@ LOG_FILE         = os.path.join(_engine_root, f"../{SEASON}_{CROP}_field_veg_ind
 BLOCKS_FILE      = os.path.join(_engine_root, f"../{CROP}_blocks.csv")
 WWF_FILE         = os.path.join(_engine_root, f"../{CROP}_wwf_map.geojson")
 Z_SCORE_FILE     = os.path.join(_engine_root, f"../{CROP}_ndvi_z_scores_norm.csv")
+MARKERS_FILE     = os.path.join(_engine_root, f"../{CROP}_whatsapp_markers.geojson")
 N_ZSCORE_BINS    = 10
 
 NAME_COL = "Name"
@@ -53,6 +55,7 @@ class AppData:
     map_center:        list[float]
     field_props_map:   dict[str, dict]   # field_id → {block_id, cluster, wwf_name}
     field_geojson_map: dict[str, dict]   # field_id → geojson FeatureCollection
+    markers_geojson:   dict | None       # WhatsApp field markers
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +121,12 @@ def load_data() -> AppData:
         if not unscored.empty:
             z_score_layers.append(Layer(UNASSIGNED_COLOR, 0.5, unscored.__geo_interface__))
 
+    # WhatsApp markers
+    markers_geojson: dict | None = None
+    if os.path.exists(MARKERS_FILE):
+        with open(MARKERS_FILE) as f:
+            markers_geojson = json.load(f)
+
     # Map centre (compute centroid once)
     centroid   = boundaries.geometry.unary_union.centroid
     map_center = [centroid.y, centroid.x]
@@ -145,6 +154,7 @@ def load_data() -> AppData:
         map_center=map_center,
         field_props_map=field_props_map,
         field_geojson_map=field_geojson_map,
+        markers_geojson=markers_geojson,
     )
 
 
