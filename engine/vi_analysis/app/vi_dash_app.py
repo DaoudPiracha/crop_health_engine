@@ -39,12 +39,12 @@ _field_geojson_map = app_data.field_geojson_map
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _whatsapp_markers() -> list:
-    """Build dl.Marker components from the WhatsApp markers GeoJSON."""
+def _build_whatsapp_markers() -> list:
+    """Build dl.Marker components from the WhatsApp markers GeoJSON (called once at startup)."""
     if not _markers_geojson:
         return []
     markers = []
-    for feat in _markers_geojson.get("features", []):
+    for i, feat in enumerate(_markers_geojson.get("features", [])):
         coords = feat["geometry"]["coordinates"]  # [lon, lat, ...]
         props  = feat.get("properties", {})
         name   = props.get("Name") or ""
@@ -61,6 +61,7 @@ def _whatsapp_markers() -> list:
 
         markers.append(
             dl.Marker(
+                id={"type": "whatsapp-marker", "index": i},
                 position=[coords[1], coords[0]],
                 children=[
                     dl.Tooltip(name, sticky=True),
@@ -69,6 +70,9 @@ def _whatsapp_markers() -> list:
             )
         )
     return markers
+
+
+_WHATSAPP_MARKERS = _build_whatsapp_markers()
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +106,7 @@ def _map_panel() -> html.Div:
             style={"fillColor": layer.color, "color": "black",
                    "weight": 0.8, "fillOpacity": layer.fill_opacity},
             hoverStyle={"weight": 2, "color": "white", "fillOpacity": 0},
+            options={"bubblingMouseEvents": False},
         )
         for i, layer in enumerate(_layers)
     ]
@@ -112,9 +117,18 @@ def _map_panel() -> html.Div:
             style={"fillColor": layer.color, "color": "black",
                    "weight": 0.8, "fillOpacity": 0},  # hidden by default
             hoverStyle={"weight": 2, "color": "white", "fillOpacity": 0},
+            options={"bubblingMouseEvents": False},
         )
         for i, layer in enumerate(_z_score_layers)
     ]
+    wwf_children = [
+        dl.GeoJSON(
+            id="wwf-layer",
+            data=_wwf_geojson,
+            style={"fillColor": "none", "color": "white",
+                   "weight": 2.5, "fillOpacity": 0},
+        )
+    ] if _wwf_geojson else []
     return html.Div(
         style={"flex": "1", "position": "relative"},
         children=[
@@ -130,19 +144,14 @@ def _map_panel() -> html.Div:
                     ),
                     *field_layers,
                     *zscore_layers,
-                    dl.GeoJSON(
-                        id="wwf-layer",
-                        data=_wwf_geojson,
-                        style={"fillColor": "none", "color": "white",
-                               "weight": 2.5, "fillOpacity": 0},
-                    ) if _wwf_geojson else None,
+                    *wwf_children,
                     dl.GeoJSON(id="highlight-a", data=None,
                                style={"fillColor": "none", "color": HIGHLIGHT_COLOR_A,
                                       "weight": 2.5, "fillOpacity": 0}),
                     dl.GeoJSON(id="highlight-b", data=None,
                                style={"fillColor": "none", "color": HIGHLIGHT_COLOR_B,
                                       "weight": 2.5, "fillOpacity": 0}),
-                    dl.LayerGroup(id="markers-layer", children=_whatsapp_markers()),
+                    dl.LayerGroup(id="markers-layer", children=_WHATSAPP_MARKERS),
                 ],
             ),
         ],
@@ -324,7 +333,7 @@ else:
 def toggle_markers(n_clicks):
     visible = (n_clicks % 2) == 1
     return (
-        _whatsapp_markers() if visible else [],
+        _WHATSAPP_MARKERS if visible else [],
         TOGGLE_STYLE_ON if visible else TOGGLE_STYLE,
     )
 
@@ -345,7 +354,7 @@ def update_store(field_click_data, zscore_click_data, compare_clicks, vi_value, 
 
     if ctx.triggered_id == "btn-compare":
         if not compare_on:
-            return {**store, "compare_on": False, "field_b": None, "next_slot": "b"}
+            return {**store, "compare_on": False, "field_b": None, "next_slot": "a"}
         return {**store, "compare_on": True}
 
     if not ctx.triggered:
