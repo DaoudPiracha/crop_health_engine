@@ -93,6 +93,12 @@ _VI_OPTIONS = [
 
 _VI_YRANGE = {"ndvi": [0, 1], "evi": [0, 2], "ndre": [0, 1], "cire": [0, 5]}
 
+# Pre-group VI log by field at startup to avoid repeated dataframe filtering on each click
+_vi_log_by_field: dict[str, pd.DataFrame] = {
+    name: group.sort_values("date")
+    for name, group in _vi_log.groupby("name")
+}
+
 app = dash.Dash(__name__)
 
 # ---------------------------------------------------------------------------
@@ -272,7 +278,7 @@ app.layout = html.Div(
         dcc.Store(id="submitted-fields", data=[]),
         dcc.Store(id="assessments-cache", data={}),
         # Fires once on load to populate green highlights from the DB
-        dcc.Interval(id="highlights-interval", interval=30_000, n_intervals=0),
+        dcc.Interval(id="highlights-interval", interval=60_000, n_intervals=0),
         _map_panel(),
         _sidebar(),
     ],
@@ -332,9 +338,9 @@ def _log_entry_card(status: str, notes: str, ts_raw: str) -> html.Div:
 
 
 def _vi_trace(field_id: str, label: str, color: str, vi: str) -> go.Scatter | None:
-    col = f"{vi}_mean"
-    data = _vi_log[_vi_log["name"] == field_id].sort_values("date")
-    if data.empty or col not in data.columns:
+    col  = f"{vi}_mean"
+    data = _vi_log_by_field.get(field_id)
+    if data is None or data.empty or col not in data.columns:
         return None
     return go.Scatter(
         x=pd.to_datetime(data["date"]),
@@ -616,11 +622,11 @@ def submit_assessment(n_clicks, store, status, notes, submitted, cache):
     Output("btn-annotations", "style"),
     Output("assessment-summary", "children"),
     Output("assessments-cache", "data"),
-    Input("submitted-fields", "data"),
     Input("highlights-interval", "n_intervals"),
     Input("btn-annotations", "n_clicks"),
+    State("submitted-fields", "data"),
 )
-def update_submitted_highlights(submitted, _, annotations_clicks):
+def update_submitted_highlights(_, annotations_clicks, submitted):
     annotations_on = (annotations_clicks % 2) == 1
 
     # Always fetch and cache, regardless of annotation toggle
