@@ -16,20 +16,34 @@ import pandas as pd
 
 from engine.vi_analysis.vi_analysis import block_colors, load_vi_log, rgb_to_hex
 from engine.vi_analysis.app.theme import UNASSIGNED_COLOR, z_score_bin_color
-from engine.vi_analysis.app.config import ASSET_DIR, CROP, SEASON
+from engine.vi_analysis.app.config import (
+    ASSET_DIR, CROP, SEASON, BACKEND_URL, USE_REMOTE_ASSETS,
+)
 
 # ---------------------------------------------------------------------------
 # Paths (derived from config)
 # ---------------------------------------------------------------------------
 
-BOUNDARIES_FILE = f"{ASSET_DIR}/{CROP}_drawn_named.geojson"
+def _resolve_base_dir() -> str:
+    """Return the directory containing all asset files.
 
-_engine_root = os.path.join(os.path.dirname(__file__), "..")
-LOG_FILE         = os.path.join(_engine_root, f"../{SEASON}_{CROP}_field_veg_index_stats.csv")
-BLOCKS_FILE      = os.path.join(_engine_root, f"../{CROP}_blocks.csv")
-WWF_FILE         = os.path.join(_engine_root, f"../{CROP}_wwf_map.geojson")
-Z_SCORE_FILE     = os.path.join(_engine_root, f"../{CROP}_ndvi_z_scores_norm.csv")
-MARKERS_FILE     = os.path.join(_engine_root, f"../{CROP}_whatsapp_markers.geojson")
+    In production (USE_REMOTE_ASSETS=true), downloads files from the Express
+    backend's /api/assets proxy to a temp dir.  Locally, uses ASSET_DIR.
+    """
+    if USE_REMOTE_ASSETS:
+        from engine.vi_analysis.app.storage import resolve_assets
+        return resolve_assets(CROP, SEASON, BACKEND_URL)
+    return ASSET_DIR
+
+
+_base_dir = _resolve_base_dir()
+
+BOUNDARIES_FILE  = os.path.join(_base_dir, f"{CROP}_drawn_named.geojson")
+LOG_FILE         = os.path.join(_base_dir, f"{SEASON}_{CROP}_field_veg_index_stats.csv")
+BLOCKS_FILE      = os.path.join(_base_dir, f"{CROP}_blocks.csv")
+WWF_FILE         = os.path.join(_base_dir, f"{CROP}_wwf_map.geojson")
+Z_SCORE_FILE     = os.path.join(_base_dir, f"{CROP}_ndvi_z_scores_norm.csv")
+MARKERS_FILE     = os.path.join(_base_dir, f"{CROP}_whatsapp_markers.geojson")
 N_ZSCORE_BINS    = 10
 
 NAME_COL = "Name"

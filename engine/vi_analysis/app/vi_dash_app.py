@@ -665,5 +665,7 @@ def update_submitted_highlights(_, annotations_clicks, submitted):
 # Entry point
 # ---------------------------------------------------------------------------
 
+server = app.server  # expose Flask server for gunicorn
+
 if __name__ == "__main__":
     app.run(debug=True)
