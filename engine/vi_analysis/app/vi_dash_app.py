@@ -270,6 +270,7 @@ app.layout = html.Div(
     children=[
         dcc.Store(id="compare-store", data=_EMPTY_STORE),
         dcc.Store(id="submitted-fields", data=[]),
+        dcc.Store(id="assessments-cache", data={}),
         # Fires once on load to populate green highlights from the DB
         dcc.Interval(id="highlights-interval", interval=30_000, n_intervals=0),
         _map_panel(),
@@ -491,8 +492,9 @@ def update_store(field_click_data, zscore_click_data, compare_clicks, vi_value, 
     Output("field-notes", "value"),
     Output("log-entry", "children"),
     Input("compare-store", "data"),
+    State("assessments-cache", "data"),
 )
-def render_selection(store):
+def render_selection(store, cache):
     compare_on = store.get("compare_on", False)
     field_a    = store.get("field_a")
     field_b    = store.get("field_b")
@@ -511,22 +513,12 @@ def render_selection(store):
         return ("", empty_figure(), TOGGLE_STYLE_ON if compare_on else TOGGLE_STYLE,
                 hint, None, None, panel_hidden, "correct", "", "")
 
-    # Fetch existing assessment for field_a
-    has_saved    = False
-    saved_status = "correct"
-    saved_notes  = ""
-    saved_ts     = ""
-    try:
-        r = requests.get(f"{API_URL}/{field_a}", timeout=3)
-        if r.ok:
-            assessment = r.json().get("data")
-            if assessment:
-                has_saved    = True
-                saved_status = assessment.get("status", "correct")
-                saved_notes  = assessment.get("notes", "")
-                saved_ts     = assessment.get("updated_at", "")
-    except requests.exceptions.RequestException:
-        pass
+    # Look up existing assessment from cache (populated on load + after each submit)
+    assessment   = (cache or {}).get(field_a)
+    has_saved    = assessment is not None
+    saved_status = assessment.get("status", "correct") if has_saved else "correct"
+    saved_notes  = assessment.get("notes", "")         if has_saved else ""
+    saved_ts     = assessment.get("updated_at", "")    if has_saved else ""
 
     log_entry = _log_entry_card(saved_status, saved_notes, saved_ts) if has_saved else ""
 
@@ -578,17 +570,19 @@ def render_selection(store):
     Output("submit-status", "children"),
     Output("submitted-fields", "data"),
     Output("log-entry", "children", allow_duplicate=True),
+    Output("assessments-cache", "data", allow_duplicate=True),
     Input("btn-submit", "n_clicks"),
     State("compare-store", "data"),
     State("field-status", "value"),
     State("field-notes", "value"),
     State("submitted-fields", "data"),
+    State("assessments-cache", "data"),
     prevent_initial_call=True,
 )
-def submit_assessment(n_clicks, store, status, notes, submitted):
+def submit_assessment(n_clicks, store, status, notes, submitted, cache):
     field_id = store.get("field_a")
     if not field_id:
-        return html.Span("No field selected.", style={"color": "#888"}), submitted, dash.no_update
+        return html.Span("No field selected.", style={"color": "#888"}), submitted, dash.no_update, dash.no_update
 
     payload = {
         "field_id": field_id,
@@ -598,20 +592,22 @@ def submit_assessment(n_clicks, store, status, notes, submitted):
     try:
         resp = requests.post(API_URL, json=payload, timeout=5)
         resp.raise_for_status()
-        saved_ts = resp.json().get("data", {}).get("updated_at", "")
-        updated  = submitted if field_id in submitted else submitted + [field_id]
-        card     = _log_entry_card(payload["status"], payload["notes"], saved_ts)
+        saved_ts     = resp.json().get("data", {}).get("updated_at", "")
+        updated      = submitted if field_id in submitted else submitted + [field_id]
+        card         = _log_entry_card(payload["status"], payload["notes"], saved_ts)
+        updated_cache = {**(cache or {}), field_id: {**payload, "updated_at": saved_ts}}
         return (
             html.Span("Saved successfully.", style={"color": "#2d8a4e", "fontWeight": "bold"}),
             updated,
             card,
+            updated_cache,
         )
     except requests.exceptions.ConnectionError:
-        return html.Span("Error: could not reach API.", style={"color": "#c0392b"}), submitted, dash.no_update
+        return html.Span("Error: could not reach API.", style={"color": "#c0392b"}), submitted, dash.no_update, dash.no_update
     except requests.exceptions.HTTPError as e:
-        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted, dash.no_update
+        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted, dash.no_update, dash.no_update
     except requests.exceptions.RequestException as e:
-        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted, dash.no_update
+        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted, dash.no_update, dash.no_update
 
 
 @app.callback(
@@ -619,23 +615,24 @@ def submit_assessment(n_clicks, store, status, notes, submitted):
     Output("uncertain-highlights", "data"),
     Output("btn-annotations", "style"),
     Output("assessment-summary", "children"),
+    Output("assessments-cache", "data"),
     Input("submitted-fields", "data"),
     Input("highlights-interval", "n_intervals"),
     Input("btn-annotations", "n_clicks"),
 )
 def update_submitted_highlights(submitted, _, annotations_clicks):
     annotations_on = (annotations_clicks % 2) == 1
-    if not annotations_on:
-        return None, None, TOGGLE_STYLE, dash.no_update
-    # Fetch all assessments from the DB so highlights persist across sessions
+
+    # Always fetch and cache, regardless of annotation toggle
     entries: list[dict] = []
     try:
         r = requests.get(LOGS_URL, timeout=5)
         if r.ok:
             entries = r.json().get("data", [])
     except requests.exceptions.RequestException:
-        # Fallback: treat all session field IDs as "correct"
         entries = [{"field_id": fid, "status": "correct"} for fid in submitted]
+
+    cache = {e["field_id"]: e for e in entries}
 
     def _geojson(field_ids):
         features = []
@@ -652,7 +649,10 @@ def update_submitted_highlights(submitted, _, annotations_clicks):
     revisit = len(uncertain)
     summary = f"{total} assessed · {revisit} need revisit" if total else ""
 
-    return _geojson(assessed), _geojson(uncertain), TOGGLE_STYLE_ON, summary
+    if not annotations_on:
+        return None, None, TOGGLE_STYLE, summary, cache
+
+    return _geojson(assessed), _geojson(uncertain), TOGGLE_STYLE_ON, summary, cache
 
 
 # ---------------------------------------------------------------------------
