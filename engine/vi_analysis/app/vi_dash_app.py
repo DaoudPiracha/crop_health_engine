@@ -10,12 +10,15 @@ Usage:
 from __future__ import annotations
 
 import re
+import requests
 import dash
 import dash_leaflet as dl
 import pandas as pd
 import plotly.graph_objects as go
 from dash import ALL, Input, Output, State, ctx, dcc, html
+from datetime import datetime
 
+from engine.vi_analysis.app.config import API_URL, LOGS_URL
 from engine.vi_analysis.app.data import app_data
 from engine.vi_analysis.app.theme import (
     COLOR_BG, COLOR_DIVIDER, COLOR_HEADING, COLOR_MUTED, COLOR_TEXT,
@@ -79,7 +82,6 @@ _WHATSAPP_MARKERS = _build_whatsapp_markers()
 # App
 # ---------------------------------------------------------------------------
 
-# compare_on lives in the store so both callbacks share a single source of truth
 _EMPTY_STORE = {"field_a": None, "field_b": None, "next_slot": "a", "compare_on": False, "vi": "ndvi"}
 
 _VI_OPTIONS = [
@@ -89,7 +91,6 @@ _VI_OPTIONS = [
     {"label": "CIRE", "value": "cire"},
 ]
 
-# Y-axis range per VI
 _VI_YRANGE = {"ndvi": [0, 1], "evi": [0, 2], "ndre": [0, 1], "cire": [0, 5]}
 
 app = dash.Dash(__name__)
@@ -115,7 +116,7 @@ def _map_panel() -> html.Div:
             id={"type": "zscore-layer", "index": i},
             data=layer.geojson,
             style={"fillColor": layer.color, "color": "black",
-                   "weight": 0.8, "fillOpacity": 0},  # hidden by default
+                   "weight": 0.8, "fillOpacity": 0},
             hoverStyle={"weight": 2, "color": "white", "fillOpacity": 0},
             options={"bubblingMouseEvents": False},
         )
@@ -151,6 +152,12 @@ def _map_panel() -> html.Div:
                     dl.GeoJSON(id="highlight-b", data=None,
                                style={"fillColor": "none", "color": HIGHLIGHT_COLOR_B,
                                       "weight": 2.5, "fillOpacity": 0}),
+                    dl.GeoJSON(id="submitted-highlights", data=None,
+                               style={"fillColor": "none", "color": "#2ecc71",
+                                      "weight": 4, "fillOpacity": 0}),
+                    dl.GeoJSON(id="uncertain-highlights", data=None,
+                               style={"fillColor": "none", "color": "#e74c3c",
+                                      "weight": 4, "fillOpacity": 0}),
                     dl.LayerGroup(id="markers-layer", children=_WHATSAPP_MARKERS),
                 ],
             ),
@@ -178,7 +185,8 @@ def _sidebar() -> html.Div:
                                 style=TOGGLE_STYLE if _z_score_layers else {**TOGGLE_STYLE, "opacity": "0.4", "cursor": "not-allowed"}),
                     html.Button("WWF boundaries", id="btn-wwf",      n_clicks=0, style=TOGGLE_STYLE),
                     html.Button("Markers",        id="btn-markers",  n_clicks=0, style=TOGGLE_STYLE),
-                    html.Button("Compare",        id="btn-compare",  n_clicks=0, style=TOGGLE_STYLE),
+                    html.Button("Compare",        id="btn-compare",      n_clicks=0, style=TOGGLE_STYLE),
+                    html.Button("Annotations",    id="btn-annotations",  n_clicks=0, style=TOGGLE_STYLE),
                 ],
             ),
             html.P(id="sidebar-hint",
@@ -196,6 +204,61 @@ def _sidebar() -> html.Div:
             html.Div(id="field-info", style={"fontSize": "13px"}),
             dcc.Graph(id="vi-chart", config={"displayModeBar": False},
                       style={"height": "340px"}),
+            html.Div(
+                id="assessment-panel",
+                style={"display": "none"},
+                children=[
+                    html.Div(
+                        style={
+                            "background": "#ffffff", "borderRadius": "8px",
+                            "padding": "14px 16px", "boxShadow": "0 1px 4px rgba(0,0,0,0.3)",
+                        },
+                        children=[
+                            html.P("Field Assessment",
+                                   style={"color": "#1a1a2e", "fontSize": "13px",
+                                          "fontWeight": "bold", "margin": "0 0 10px 0"}),
+                            dcc.RadioItems(
+                                id="field-status",
+                                options=[
+                                    {"label": "  Correct",                "value": "correct"},
+                                    {"label": "  Incorrect — needs revisit", "value": "revisit"},
+                                ],
+                                value="correct",
+                                style={"fontSize": "13px", "color": "#1a1a2e"},
+                                inputStyle={"marginRight": "6px"},
+                                labelStyle={"display": "block", "marginBottom": "8px"},
+                            ),
+                            html.P("Notes", style={"color": "#555", "fontSize": "12px",
+                                                   "margin": "8px 0 4px 0"}),
+                            dcc.Textarea(
+                                id="field-notes",
+                                placeholder="Add notes...",
+                                style={
+                                    "width": "100%", "height": "80px", "boxSizing": "border-box",
+                                    "background": "#f5f5f5", "color": "#1a1a2e",
+                                    "border": "1px solid #ddd", "borderRadius": "4px",
+                                    "padding": "6px", "fontSize": "12px", "resize": "vertical",
+                                },
+                            ),
+                            html.Button(
+                                "Submit Assessment", id="btn-submit", n_clicks=0,
+                                style={
+                                    "marginTop": "10px", "width": "100%",
+                                    "background": "#4a90d9", "color": "#ffffff",
+                                    "border": "none", "borderRadius": "4px",
+                                    "padding": "7px 0", "fontSize": "13px",
+                                    "fontWeight": "bold", "cursor": "pointer",
+                                },
+                            ),
+                            html.Div(id="submit-status",
+                                     style={"fontSize": "12px", "marginTop": "8px",
+                                            "textAlign": "center"}),
+                            # Log entry shown below the form when a saved assessment exists
+                            html.Div(id="log-entry"),
+                        ],
+                    ),
+                ],
+            ),
         ],
     )
 
@@ -204,6 +267,9 @@ app.layout = html.Div(
     style={"display": "flex", "height": "100vh", "fontFamily": "sans-serif"},
     children=[
         dcc.Store(id="compare-store", data=_EMPTY_STORE),
+        dcc.Store(id="submitted-fields", data=[]),
+        # Fires once on load to populate green highlights from the DB
+        dcc.Interval(id="highlights-interval", interval=30_000, n_intervals=0),
         _map_panel(),
         _sidebar(),
     ],
@@ -226,6 +292,40 @@ def _field_card(field_id: str, label: str, label_color: str) -> html.Div:
         html.Span("WWF ID: ", style={"color": COLOR_MUTED, "fontSize": "12px"}),
         html.Span(p["wwf_name"], style={"color": COLOR_TEXT, "fontSize": "12px"}),
     ])
+
+
+def _log_entry_card(status: str, notes: str, ts_raw: str) -> html.Div:
+    badge_color = "#2d8a4e" if status == "correct" else "#e74c3c"
+    badge_label = "Correct" if status == "correct" else "Needs revisit"
+    try:
+        dt     = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+        ts_fmt = dt.strftime("%b %d, %Y  %H:%M")
+    except Exception:
+        ts_fmt = ts_raw
+
+    return html.Div(
+        style={"borderTop": f"1px solid {COLOR_DIVIDER}", "paddingTop": "10px", "marginTop": "6px"},
+        children=[
+            html.P("Last saved",
+                   style={"color": COLOR_MUTED, "fontSize": "11px", "margin": "0 0 6px 0",
+                          "textTransform": "uppercase", "letterSpacing": "0.05em"}),
+            html.Div(
+                style={"display": "flex", "justifyContent": "space-between", "alignItems": "center"},
+                children=[
+                    html.Span(ts_fmt, style={"color": "#555", "fontSize": "12px"}),
+                    html.Span(badge_label, style={
+                        "background": badge_color, "color": "#fff",
+                        "borderRadius": "4px", "padding": "2px 7px",
+                        "fontSize": "11px", "fontWeight": "bold",
+                    }),
+                ],
+            ),
+            *(
+                [html.Div(notes, style={"color": "#555", "fontSize": "12px", "marginTop": "4px"})]
+                if notes else []
+            ),
+        ],
+    )
 
 
 def _vi_trace(field_id: str, label: str, color: str, vi: str) -> go.Scatter | None:
@@ -276,7 +376,6 @@ def toggle_fields(fields_clicks, outlines_clicks, zscore_clicks):
         return {"fillColor": layer.color, "color": "black",
                 "weight": 0.8, "fillOpacity": layer.fill_opacity}
 
-    # Use data=None to fully remove a layer from the map (prevents event interception)
     if not fields_on:
         block_data  = [None] * len(_layers)
         zscore_data = [None] * len(_z_score_layers)
@@ -385,6 +484,11 @@ def update_store(field_click_data, zscore_click_data, compare_clicks, vi_value, 
     Output("sidebar-hint", "children"),
     Output("highlight-a", "data"),
     Output("highlight-b", "data"),
+    Output("assessment-panel", "style"),
+    Output("field-status", "value"),
+    Output("field-notes", "value"),
+    Output("submit-status", "children"),
+    Output("log-entry", "children"),
     Input("compare-store", "data"),
 )
 def render_selection(store):
@@ -399,8 +503,31 @@ def render_selection(store):
         "Click a field to view its VI time series."
     )
 
+    panel_hidden = {"display": "none"}
+    panel_shown  = {"display": "block"}
+
     if not field_a:
-        return "", empty_figure(), TOGGLE_STYLE_ON if compare_on else TOGGLE_STYLE, hint, None, None
+        return ("", empty_figure(), TOGGLE_STYLE_ON if compare_on else TOGGLE_STYLE,
+                hint, None, None, panel_hidden, "correct", "", "", "")
+
+    # Fetch existing assessment for field_a
+    has_saved    = False
+    saved_status = "correct"
+    saved_notes  = ""
+    saved_ts     = ""
+    try:
+        r = requests.get(f"{API_URL}/{field_a}", timeout=3)
+        if r.ok:
+            assessment = r.json().get("data")
+            if assessment:
+                has_saved    = True
+                saved_status = assessment.get("status", "correct")
+                saved_notes  = assessment.get("notes", "")
+                saved_ts     = assessment.get("updated_at", "")
+    except requests.exceptions.RequestException:
+        pass
+
+    log_entry = _log_entry_card(saved_status, saved_notes, saved_ts) if has_saved else ""
 
     fig = empty_figure()
     trace_a = _vi_trace(field_a, "A", TRACE_COLOR_A, vi)
@@ -441,7 +568,78 @@ def render_selection(store):
         hint,
         _field_geojson_map.get(field_a) if compare_on else None,
         _field_geojson_map.get(field_b) if compare_on else None,
+        panel_shown, saved_status, saved_notes, "",
+        log_entry,
     )
+
+
+@app.callback(
+    Output("submit-status", "children", allow_duplicate=True),
+    Output("submitted-fields", "data"),
+    Input("btn-submit", "n_clicks"),
+    State("compare-store", "data"),
+    State("field-status", "value"),
+    State("field-notes", "value"),
+    State("submitted-fields", "data"),
+    prevent_initial_call=True,
+)
+def submit_assessment(n_clicks, store, status, notes, submitted):
+    field_id = store.get("field_a")
+    if not field_id:
+        return html.Span("No field selected.", style={"color": "#888"}), submitted
+
+    payload = {
+        "field_id": field_id,
+        "status":   status or "correct",
+        "notes":    notes or "",
+    }
+    try:
+        resp = requests.post(API_URL, json=payload, timeout=5)
+        resp.raise_for_status()
+        updated = submitted if field_id in submitted else submitted + [field_id]
+        return html.Span("Saved successfully.", style={"color": "#2d8a4e", "fontWeight": "bold"}), updated
+    except requests.exceptions.ConnectionError:
+        return html.Span("Error: could not reach API.", style={"color": "#c0392b"}), submitted
+    except requests.exceptions.HTTPError as e:
+        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted
+    except requests.exceptions.RequestException as e:
+        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted
+
+
+@app.callback(
+    Output("submitted-highlights", "data"),
+    Output("uncertain-highlights", "data"),
+    Output("btn-annotations", "style"),
+    Input("submitted-fields", "data"),
+    Input("highlights-interval", "n_intervals"),
+    Input("btn-annotations", "n_clicks"),
+)
+def update_submitted_highlights(submitted, _, annotations_clicks):
+    annotations_on = (annotations_clicks % 2) == 1
+    if not annotations_on:
+        return None, None, TOGGLE_STYLE
+    # Fetch all assessments from the DB so highlights persist across sessions
+    entries: list[dict] = []
+    try:
+        r = requests.get(LOGS_URL, timeout=5)
+        if r.ok:
+            entries = r.json().get("data", [])
+    except requests.exceptions.RequestException:
+        # Fallback: treat all session field IDs as "correct"
+        entries = [{"field_id": fid, "status": "correct"} for fid in submitted]
+
+    def _geojson(field_ids):
+        features = []
+        for fid in field_ids:
+            fc = _field_geojson_map.get(str(fid))
+            if fc:
+                features.extend(fc.get("features", []))
+        return {"type": "FeatureCollection", "features": features} if features else None
+
+    assessed  = [e["field_id"] for e in entries if e.get("status") == "correct"]
+    uncertain = [e["field_id"] for e in entries if e.get("status") != "correct"]
+
+    return _geojson(assessed), _geojson(uncertain), TOGGLE_STYLE_ON
 
 
 # ---------------------------------------------------------------------------

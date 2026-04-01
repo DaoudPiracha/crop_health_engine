@@ -8,3 +8,7 @@ CROP   = "shahmeer"
 SEASON = "kharif"
 
 ASSET_DIR = "/Users/daoud/PycharmAssets/shahmeer_farms"
+
+# Backend API endpoint — update before deploying
+API_URL  = "http://localhost:3003/api/field-assessment"
+LOGS_URL = "http://localhost:3003/api/field-assessments"
