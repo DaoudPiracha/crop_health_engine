@@ -147,8 +147,8 @@ def _map_panel() -> html.Div:
                     *zscore_layers,
                     *wwf_children,
                     dl.GeoJSON(id="highlight-a", data=None,
-                               style={"fillColor": "none", "color": HIGHLIGHT_COLOR_A,
-                                      "weight": 2.5, "fillOpacity": 0}),
+                               style={"fillColor": "none", "color": "white",
+                                      "weight": 4, "fillOpacity": 0}),
                     dl.GeoJSON(id="highlight-b", data=None,
                                style={"fillColor": "none", "color": HIGHLIGHT_COLOR_B,
                                       "weight": 2.5, "fillOpacity": 0}),
@@ -174,6 +174,8 @@ def _sidebar() -> html.Div:
         },
         children=[
             html.H3("VI Analysis", style={"margin": "0", "color": COLOR_HEADING}),
+            html.Div(id="assessment-summary",
+                     style={"fontSize": "12px", "color": COLOR_MUTED, "marginTop": "-4px"}),
             html.Div(
                 style={"display": "flex", "flexWrap": "wrap", "gap": "8px",
                        "borderBottom": f"1px solid {COLOR_DIVIDER}",
@@ -487,7 +489,6 @@ def update_store(field_click_data, zscore_click_data, compare_clicks, vi_value, 
     Output("assessment-panel", "style"),
     Output("field-status", "value"),
     Output("field-notes", "value"),
-    Output("submit-status", "children"),
     Output("log-entry", "children"),
     Input("compare-store", "data"),
 )
@@ -508,7 +509,7 @@ def render_selection(store):
 
     if not field_a:
         return ("", empty_figure(), TOGGLE_STYLE_ON if compare_on else TOGGLE_STYLE,
-                hint, None, None, panel_hidden, "correct", "", "", "")
+                hint, None, None, panel_hidden, "correct", "", "")
 
     # Fetch existing assessment for field_a
     has_saved    = False
@@ -566,16 +567,17 @@ def render_selection(store):
         info, fig,
         TOGGLE_STYLE_ON if compare_on else TOGGLE_STYLE,
         hint,
-        _field_geojson_map.get(field_a) if compare_on else None,
+        _field_geojson_map.get(field_a),
         _field_geojson_map.get(field_b) if compare_on else None,
-        panel_shown, saved_status, saved_notes, "",
+        panel_shown, saved_status, saved_notes,
         log_entry,
     )
 
 
 @app.callback(
-    Output("submit-status", "children", allow_duplicate=True),
+    Output("submit-status", "children"),
     Output("submitted-fields", "data"),
+    Output("log-entry", "children", allow_duplicate=True),
     Input("btn-submit", "n_clicks"),
     State("compare-store", "data"),
     State("field-status", "value"),
@@ -586,7 +588,7 @@ def render_selection(store):
 def submit_assessment(n_clicks, store, status, notes, submitted):
     field_id = store.get("field_a")
     if not field_id:
-        return html.Span("No field selected.", style={"color": "#888"}), submitted
+        return html.Span("No field selected.", style={"color": "#888"}), submitted, dash.no_update
 
     payload = {
         "field_id": field_id,
@@ -596,20 +598,27 @@ def submit_assessment(n_clicks, store, status, notes, submitted):
     try:
         resp = requests.post(API_URL, json=payload, timeout=5)
         resp.raise_for_status()
-        updated = submitted if field_id in submitted else submitted + [field_id]
-        return html.Span("Saved successfully.", style={"color": "#2d8a4e", "fontWeight": "bold"}), updated
+        saved_ts = resp.json().get("data", {}).get("updated_at", "")
+        updated  = submitted if field_id in submitted else submitted + [field_id]
+        card     = _log_entry_card(payload["status"], payload["notes"], saved_ts)
+        return (
+            html.Span("Saved successfully.", style={"color": "#2d8a4e", "fontWeight": "bold"}),
+            updated,
+            card,
+        )
     except requests.exceptions.ConnectionError:
-        return html.Span("Error: could not reach API.", style={"color": "#c0392b"}), submitted
+        return html.Span("Error: could not reach API.", style={"color": "#c0392b"}), submitted, dash.no_update
     except requests.exceptions.HTTPError as e:
-        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted
+        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted, dash.no_update
     except requests.exceptions.RequestException as e:
-        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted
+        return html.Span(f"Error: {e}", style={"color": "#c0392b"}), submitted, dash.no_update
 
 
 @app.callback(
     Output("submitted-highlights", "data"),
     Output("uncertain-highlights", "data"),
     Output("btn-annotations", "style"),
+    Output("assessment-summary", "children"),
     Input("submitted-fields", "data"),
     Input("highlights-interval", "n_intervals"),
     Input("btn-annotations", "n_clicks"),
@@ -617,7 +626,7 @@ def submit_assessment(n_clicks, store, status, notes, submitted):
 def update_submitted_highlights(submitted, _, annotations_clicks):
     annotations_on = (annotations_clicks % 2) == 1
     if not annotations_on:
-        return None, None, TOGGLE_STYLE
+        return None, None, TOGGLE_STYLE, dash.no_update
     # Fetch all assessments from the DB so highlights persist across sessions
     entries: list[dict] = []
     try:
@@ -639,7 +648,11 @@ def update_submitted_highlights(submitted, _, annotations_clicks):
     assessed  = [e["field_id"] for e in entries if e.get("status") == "correct"]
     uncertain = [e["field_id"] for e in entries if e.get("status") != "correct"]
 
-    return _geojson(assessed), _geojson(uncertain), TOGGLE_STYLE_ON
+    total   = len(entries)
+    revisit = len(uncertain)
+    summary = f"{total} assessed · {revisit} need revisit" if total else ""
+
+    return _geojson(assessed), _geojson(uncertain), TOGGLE_STYLE_ON, summary
 
 
 # ---------------------------------------------------------------------------
